@@ -7,6 +7,7 @@ API keys are read from environment variables only; they are never logged.
 import base64
 import logging
 import os
+import time
 
 from openai import AsyncOpenAI
 
@@ -17,14 +18,14 @@ logger = logging.getLogger(__name__)
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
-DEFAULT_DEEPSEEK_MODEL = "deepseek-flash"
+DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash"
 DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
 
 
 class DeepSeekProvider:
     """DeepSeek chat provider with OpenAI-compatible tool calling."""
 
-    def __init__(self, api_key=None, model=None, timeout=30.0, max_retries=2):
+    def __init__(self, api_key=None, model=None, timeout=15.0, max_retries=0):
         self._api_key = api_key if api_key is not None else os.getenv("DEEPSEEK_API_KEY")
         self._model = model or os.getenv("DEEPSEEK_MODEL") or DEFAULT_DEEPSEEK_MODEL
         self._configured = bool(self._api_key)
@@ -54,11 +55,16 @@ class DeepSeekProvider:
         if tools:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
+        started = time.perf_counter()
+        logger.info("[debug-deepseek] request model=%s messages=%d tools=%d configured=%s", self._model, len(messages), len(tools or []), self._configured)
         try:
             response = await self._client.chat.completions.create(**kwargs)
         except Exception as exc:  # noqa: BLE001 - provider errors are surfaced to the user
+            logger.error("[debug-deepseek] error duration_ms=%d type=%s", int((time.perf_counter() - started) * 1000), type(exc).__name__)
             logger.error("DeepSeek API error: %s", exc)
             raise AIProviderError(f"DeepSeek API gagal: {exc}") from exc
+
+        logger.info("[debug-deepseek] response duration_ms=%d choices=%d", int((time.perf_counter() - started) * 1000), len(response.choices or []))
 
         choice = response.choices[0].message if response.choices else None
         if choice is None:

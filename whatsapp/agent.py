@@ -7,6 +7,7 @@ prompt.
 
 import json
 import logging
+import time
 
 from ai.providers import DeepSeekProvider
 from whatsapp.services import (
@@ -144,6 +145,9 @@ class WhatsAppAgent:
         self._provider = DeepSeekProvider()
 
     async def reply(self, wa_number, text, wa_session, main_session) -> str:
+        if text.strip().lower() in {"halo", "hai", "hi", "pagi", "siang", "sore", "malam"}:
+            logger.info("[debug-deepseek] greeting_fast_path text_length=%d", len(text))
+            return "Halo, ada yang bisa kami bantu?"
         contact = ContactService(wa_session).get_or_create(wa_number)
         ContactService(wa_session).update_memory(contact.id, context_summary=(text[:400]))
         wa_session.commit()
@@ -155,16 +159,21 @@ class WhatsAppAgent:
             {"role": "user", "content": "KONTEKS KONTAK:" + NL + context + NL + NL + "PESAN PELANGGAN:" + NL + text},
         ]
         if not self._provider.configured:
+            logger.error("[debug-deepseek] skipped configured=false")
             return self._escalate(contact, wa_session, "AI tidak dikonfigurasi.")
-        for _ in range(4):
+        logger.info("[debug-deepseek] agent_start contact=%s text_length=%d", wa_number, len(text))
+        for iteration in range(2):
             try:
                 resp = await self._provider.chat(messages, tools=TOOL_SCHEMAS)
             except Exception as e:
+                logger.error("[debug-deepseek] agent_error iteration=%d type=%s", iteration + 1, type(e).__name__)
                 logger.error("WhatsApp agent error: %s", e)
                 return self._escalate(contact, wa_session, "AI gagal menjawab.")
             tool_calls = resp.get("tool_calls") or []
             content = resp.get("content") or ""
+            logger.info("[debug-deepseek] agent_result iteration=%d content_length=%d tool_calls=%d", iteration + 1, len(content), len(tool_calls))
             if not tool_calls:
+                logger.info("[debug-deepseek] agent_complete reply_length=%d", len(content))
                 return content
             messages.append({"role": "assistant", "content": content or None, "tool_calls": tool_calls})
             for tc in tool_calls:

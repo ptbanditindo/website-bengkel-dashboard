@@ -1,6 +1,6 @@
 /* Baileys WhatsApp gateway bridge — localhost HTTP, internal auth.
  *
- * Latest Baileys v7 (ESM). Run: node gateway/whatsapp_bridge.js
+ * Legacy bridge retained for reference. The app now runs Knightbot-MD/index.js.
  *
  * Serves 127.0.0.1:BAILEYS_PORT (default 9090) for the Python side
  * (whatsapp/baileys_client.py), and forwards inbound WhatsApp messages to
@@ -15,11 +15,14 @@ import { fileURLToPath } from "node:url"
 
 import makeWASocket, {
   useMultiFileAuthState,
+  makeCacheableSignalKeyStore,
   DisconnectReason,
   fetchLatestBaileysVersion,
   Browsers,
 } from "@whiskeysockets/baileys"
 import { Boom } from "@hapi/boom"
+import NodeCache from "@cacheable/node-cache"
+import pino from "pino"
 import qrcode from "qrcode"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -43,6 +46,7 @@ function readInternalToken() {
 
 // ---------- mutable state ----------
 let sock = null
+let authState = null
 let currentStatus = "connecting"
 let currentQrDataUrl = null
 let currentQrExpiresAt = 0
@@ -57,9 +61,7 @@ function jidToNumber(jid) {
 
 function meId() {
   if (sock && sock.user && sock.user.id) return sock.user.id
-  if (sock && sock.authState && sock.authState.creds && sock.authState.creds.me) {
-    return sock.authState.creds.me.id
-  }
+  if (authState && authState.creds && authState.creds.me) return authState.creds.me.id
   return ""
 }
 
@@ -121,6 +123,9 @@ function scheduleReconnect() {
 
 async function start() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR)
+  authState = state
+  const msgRetryCounterCache = new NodeCache()
+  const logger = pino({ level: process.env.BAILEYS_LOG_LEVEL || "silent" })
 
   let version
   try {
@@ -133,10 +138,18 @@ async function start() {
   currentError = ""
 
   sock = makeWASocket({
-    auth: state,
+    logger,
     browser: Browsers.macOS("Chrome"),
+    auth: {
+      creds: state.creds,
+      keys: makeCacheableSignalKeyStore(state.keys, logger),
+    },
     markOnlineOnConnect: false,
     syncFullHistory: false,
+    msgRetryCounterCache,
+    defaultQueryTimeoutMs: 60000,
+    connectTimeoutMs: 60000,
+    keepAliveIntervalMs: 10000,
     ...(version ? { version } : {}),
   })
 
@@ -234,7 +247,7 @@ const server = http.createServer(async (req, res) => {
       const phone = String(body.phone || "").replace(/\D/g, "")
       if (!phone) return sendJson(res, 400, { error: "phone required" })
       if (!sock) return sendJson(res, 503, { status: "bridge_unavailable", error: "socket belum siap" })
-      if (sock.authState && sock.authState.creds && sock.authState.creds.registered) {
+      if (authState && authState.creds && authState.creds.registered) {
         return sendJson(res, 200, statusPayload())
       }
       try {

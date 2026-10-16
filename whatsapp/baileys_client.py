@@ -1,4 +1,4 @@
-"""HTTP client for the local Baileys Node.js gateway bridge.
+"""HTTP client for the Knightbot-MD WhatsApp bridge.
 
 Talks to 127.0.0.1 only, with the internal token. Never exposed to the browser.
 """
@@ -7,7 +7,7 @@ import json
 import urllib.error
 import urllib.request
 
-DEFAULT_GATEWAY_URL = "http://127.0.0.1:9090"
+DEFAULT_BRIDGE_URL = "http://127.0.0.1:9090"
 
 
 def _token() -> str:
@@ -16,7 +16,7 @@ def _token() -> str:
 
 
 def _request(path: str, method: str = "GET", payload=None, timeout=10) -> dict:
-    url = DEFAULT_GATEWAY_URL + path
+    url = DEFAULT_BRIDGE_URL + path
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
     req = urllib.request.Request(url, data=data, method=method)
     req.add_header("Content-Type", "application/json")

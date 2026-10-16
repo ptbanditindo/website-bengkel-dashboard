@@ -1831,7 +1831,8 @@
     var text = input.value.trim();
     var id = state.currentWaId;
     try {
-      await api("/api/wa/contacts/" + id + "/reply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: text }) });
+      var result = await api("/api/wa/contacts/" + id + "/reply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: text }) });
+      if (!result || result.sent !== true) throw new ApiError(502, "Pesan tersimpan, tetapi gagal dikirim ke WhatsApp.");
       input.value = "";
       state.waMsgCount = null;
       await refreshWaConversation();
@@ -2047,7 +2048,7 @@
         '<input type="text" id="wa-pair-phone" placeholder="Contoh: 62812xxxxxxxx">' +
         '<button class="btn primary sm" data-wa-pairing style="margin-top:8px">Minta Kode Pairing</button></div></div>' +
         '<div id="wa-qr-box"></div><div id="wa-pair-box"></div>' +
-        '<p class="muted" style="margin-top:12px">Jalankan proses gateway dengan: <code>node gateway/whatsapp_bridge.js</code></p>' +
+        '<p class="muted" style="margin-top:12px">Jalankan bot WhatsApp dengan: <code>cd Knightbot-MD; npm start</code></p>' +
         '</section>';
       html += '<section class="panel"><h2>Telegram — Bot Token</h2>' +
         '<div class="form-field"><label>Bot Token</label><input type="password" id="tg-token" placeholder="Kosongkan = tidak mengubah">' +
