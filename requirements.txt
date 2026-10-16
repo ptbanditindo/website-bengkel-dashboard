@@ -8,8 +8,9 @@ openai>=1.0
 SQLAlchemy>=2.0
 alembic>=1.13
 
-# API (local UI foundation)
+# API + dashboard (FastAPI + Pydantic schemas)
 fastapi>=0.100
+pydantic>=2.0
 uvicorn>=0.23
 
 # Testing
