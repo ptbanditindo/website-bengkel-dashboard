@@ -26,7 +26,7 @@ Asisten AI untuk mengelola bengkel mobil: pelanggan, kendaraan, riwayat servis, 
     api/           REST API + dashboard lokal (FastAPI)
     bot/           handler, otorisasi, interaksi Telegram
     whatsapp/      layanan & model WhatsApp CS
-    gateway/       jembatan WhatsApp Baileys (Node.js)
+    Knightbot-MD/   bot WhatsApp Baileys + bridge HTTP
     config/        penyimpanan kredensial integrasi (server-side)
     database/      model, engine, session
     repositories/  akses data
@@ -52,9 +52,9 @@ Asisten AI untuk mengelola bengkel mobil: pelanggan, kendaraan, riwayat servis, 
        copy .env.example .env
 
 4. Isi `.env` (lihat Konfigurasi di bawah).
-5. (Opsional) Untuk WhatsApp CS, install dan jalankan gateway Baileys:
+5. (Opsional) Untuk WhatsApp CS, install dan jalankan Knightbot-MD:
 
-       cd gateway
+       cd Knightbot-MD
        npm install
        npm start
 

@@ -183,11 +183,11 @@ def reply_contact(contact_id: int, body: ReplyBody, wdb: Session = Depends(get_w
         QuestionService(wdb).answer_pending_for_contact(contact.id, text)
         cs.set_takeover(contact.id)
         wdb.commit()
-        sent = False
+        send_result = {"sent": False, "error": "WhatsApp bridge tidak terhubung."}
         st = baileys_client.status()
         if st.get("status") == "connected":
-            sent = bool(baileys_client.send_message(contact.wa_number, text).get("sent"))
-        return {"sent": sent, "owner_takeover": True}
+            send_result = baileys_client.send_message(contact.wa_number, text)
+        return {"sent": bool(send_result.get("sent")), "error": send_result.get("error"), "owner_takeover": True}
     except ServiceError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -208,7 +208,7 @@ def gateway_status(_: None = Depends(require_ui_access)):
     st = baileys_client.status()
     return {
         "connected": st.get("status") == "connected",
-        "provider": st.get("provider", "baileys"),
+        "provider": st.get("provider", "knightbot-md"),
         "detail": st.get("error") or "",
         "authedNumber": st.get("authedNumber"),
     }

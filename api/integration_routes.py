@@ -1,5 +1,6 @@
 """Integration settings endpoints: WhatsApp (Baileys), Telegram, AI providers."""
 
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
@@ -13,6 +14,8 @@ from whatsapp.agent import WhatsAppAgent
 from whatsapp.db import get_whatsapp_db
 from whatsapp.normalize import normalize_wa_number
 from whatsapp.services import ContactService
+
+logger = logging.getLogger(__name__)
 
 int_router = APIRouter(prefix="/api/integrations", tags=["integrations"])
 
@@ -125,20 +128,32 @@ async def whatsapp_inbound(payload: dict, request: Request, wdb=Depends(get_what
     message_id = payload.get("message_id")
     text = (payload.get("text") or "").strip()
     if not wa_number or not text:
+        logger.warning("[debug-deepseek] inbound_rejected has_number=%s text_length=%d", bool(wa_number), len(text))
         return {"processed": False}
+    logger.info("[debug-deepseek] inbound_received number=%s message_id=%s text_length=%d", wa_number, message_id, len(text))
     contact = ContactService(wdb).get_or_create(wa_number)
     created, _ = ContactService(wdb).record_message(contact.id, "customer", text, gateway_message_id=message_id)
     if not created:
         return {"processed": False, "duplicate": True}
-    if ContactService(wdb).is_taken_over(contact.id):
+    takeover_active = ContactService(wdb).is_taken_over(contact.id)
+    logger.info(
+        "[debug-deepseek] takeover_check contact_id=%s number=%s owner_takeover_on=%s active=%s",
+        contact.id,
+        wa_number,
+        contact.owner_takeover_on,
+        takeover_active,
+    )
+    if takeover_active:
         wdb.commit()
         return {"processed": True, "ai_skipped": True, "reason": "owner_takeover"}
     agent = WhatsAppAgent()
     reply = await agent.reply(wa_number, text, wdb, db)
+    logger.info("[debug-deepseek] reply_ready number=%s reply_length=%d", wa_number, len(reply or ""))
     ContactService(wdb).record_message(contact.id, "ai", reply)
     wdb.commit()
     st = baileys_client.status()
-    sent = False
+    send_result = {"sent": False, "error": "bridge_not_connected"}
     if st.get("status") == "connected":
-        sent = bool(baileys_client.send_message(wa_number, reply).get("sent"))
-    return {"processed": True, "reply_sent": sent}
+        send_result = baileys_client.send_message(wa_number, reply)
+    logger.info("[debug-deepseek] outbound_result number=%s bridge_status=%s sent=%s error=%s", wa_number, st.get("status"), bool(send_result.get("sent")), send_result.get("error"))
+    return {"processed": True, "reply_sent": bool(send_result.get("sent"))}
