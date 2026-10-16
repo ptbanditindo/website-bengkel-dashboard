@@ -1,0 +1,45 @@
+{
+  "stage": "H8D",
+  "title": "Implementasi API Edit Data Kendaraan",
+  "status": "PASS",
+  "note": "Build First, Test Later: full regression deferred to H8G",
+  "endpoint": {
+    "method": "PUT",
+    "path": "/api/vehicles/{vehicle_id}",
+    "request_schema": "VehicleUpdate (partial update)",
+    "response_schema": "VehicleDetail",
+    "editable_fields": ["nama_client", "nomor_wa", "nopol", "jenis_mobil", "tahun_mobil", "alamat_client"]
+  },
+  "validation_error_handling": {
+    "not_found": 404,
+    "duplicate_plate": 409,
+    "validation_error": 422,
+    "empty_body": 400,
+    "unauthorized": "401/503 (H8B)"
+  },
+  "files_changed": [
+    "api/schemas.py",
+    "api/app.py",
+    "tests/test_vehicle_edit_api.py"
+  ],
+  "authentication": "Depends(require_ui_access)",
+  "service_used": "VehicleService.update_vehicle",
+  "checks_run": {
+    "import_syntax": "OK (9 routes registered)",
+    "targeted_tests": {"total": 9, "passed": 9, "failed": 0},
+    "full_regression": "DEFERRED to H8G"
+  },
+  "service_records_preserved": true,
+  "operational_db": {
+    "intact": true,
+    "vehicles": 1,
+    "service_records": 0,
+    "alembic_version": "fa7fa27bbb86",
+    "used_as_test_db": false
+  },
+  "migration_c7c0a1b2c3d4": {"status": "pending", "applied": false},
+  "constraints": [
+    "update_vehicle uses clean_required for nama_client, so name cannot be cleared via this endpoint (only set to a non-empty value)",
+    "full regression and combined integration deferred to H8G"
+  ]
+}

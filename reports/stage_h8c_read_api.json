@@ -1,0 +1,53 @@
+{
+  "stage": "H8C",
+  "title": "Implementasi API Baca untuk UI Lokal",
+  "status": "PASS",
+  "deterministic_tests": {"total": 224, "pass": 224, "fail": 0, "skipped": 0},
+  "new_tests": 16,
+  "endpoints": [
+    {"path": "GET /api/dashboard", "auth": true, "response": "vehicle_count, service_record_count, recent_service_records, incomplete_vehicles_count"},
+    {"path": "GET /api/vehicles", "auth": true, "response": "list (pagination limit/offset)"},
+    {"path": "GET /api/vehicles/search", "auth": true, "response": "list (normalized plate)"},
+    {"path": "GET /api/vehicles/{id}", "auth": true, "response": "detail + missing_fields + service_record_count"},
+    {"path": "GET /api/vehicles/{id}/service-records", "auth": true, "response": "list"},
+    {"path": "GET /api/service-records/{id}", "auth": true, "response": "detail (jobs/parts/money)"}
+  ],
+  "files_changed": [
+    "api/schemas.py",
+    "api/app.py",
+    "services/reporting.py",
+    "repositories/vehicle_repository.py",
+    "services/vehicle_service.py",
+    "tests/test_read_api.py"
+  ],
+  "services_reused": [
+    "VehicleService.get_vehicle/list_vehicles/search_vehicles_filtered",
+    "ServiceRecordService.get_service_record/list_service_records",
+    "ReportingService.count_vehicles/count_service_records/recent_service_records/incomplete_vehicles_count"
+  ],
+  "serialization": {
+    "money_as_string": true,
+    "datetime_iso": true,
+    "pydantic_schemas": true,
+    "no_raw_sqlalchemy_to_json": true
+  },
+  "authentication": "Depends(require_ui_access) on all data endpoints; health public",
+  "operational_db": {
+    "intact": true,
+    "vehicles": 1,
+    "service_records": 0,
+    "alembic_version": "fa7fa27bbb86",
+    "used_as_test_db": false
+  },
+  "migration_c7c0a1b2c3d4": {"status": "pending", "applied": false},
+  "limitations": [
+    "nama_client still NOT NULL in operational DB (migration pending)",
+    "no edit/CRUD, backup/restore, or UI yet (out of scope)",
+    "pagination capped at 200 per request"
+  ],
+  "next_steps": [
+    "apply migration c7c0a1b2c3d4 when approved",
+    "add edit endpoint (update_vehicle) + backup/restore",
+    "build local browser UI calling these endpoints with Authorization: Bearer"
+  ]
+}

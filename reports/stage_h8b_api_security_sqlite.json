@@ -1,0 +1,66 @@
+{
+  "stage": "H8B",
+  "title": "Pengamanan Backend & Fondasi Akses UI Lokal",
+  "status": "PASS",
+  "deterministic_tests": {"total": 208, "pass": 208, "fail": 0, "skipped": 0},
+  "new_tests": 9,
+  "files_changed": [
+    "api/app.py",
+    "database/session.py",
+    ".env.example",
+    "tests/test_api.py",
+    "tests/test_api_security.py",
+    "tests/test_database.py"
+  ],
+  "authentication": {
+    "mechanism": "bearer token via UI_ACCESS_TOKEN env",
+    "header": "Authorization: Bearer <token>",
+    "compare": "secrets.compare_digest (constant-time)",
+    "fail_closed": true,
+    "status_codes": {"missing_wrong_token": 401, "not_configured": 503},
+    "token_in_log": false
+  },
+  "endpoints": {
+    "protected": ["/"],
+    "public": ["/health (minimal)"],
+    "docs_disabled": ["/docs", "/redoc", "/openapi.json"]
+  },
+  "network": {
+    "default_host": "127.0.0.1",
+    "default_port": 8000,
+    "host_unchanged": true,
+    "public_exposure_warning_documented": true
+  },
+  "sqlite": {
+    "busy_timeout": 5000,
+    "busy_timeout_on_every_connection": true,
+    "wal_helper_added": "enable_wal(engine)",
+    "wal_tested_on_temp_db": true,
+    "wal_applied_to_operational_db": false,
+    "operational_journal_mode": "delete"
+  },
+  "operational_db": {
+    "intact": true,
+    "vehicles": 1,
+    "service_records": 0,
+    "alembic_version": "fa7fa27bbb86",
+    "used_as_test_db": false
+  },
+  "migration_c7c0a1b2c3d4": {"status": "pending", "applied": false},
+  "git": {
+    "pre_existing_modified_tracked": [".env.example", ".gitignore", "Dockerfile", "README.md", "docker-compose.yml", "main.py", "requirements.txt"],
+    "pre_existing_untracked": ["ai/", "api/", "bot/", "data/", "database/", "migrations/", "reports/", "repositories/", "services/", "tests/", "run_api.py", "alembic.ini"],
+    "h8b_changes_within_existing_files": true,
+    "destructive_git_operations": false
+  },
+  "limitations": [
+    "WAL belum diterapkan ke database operasional (butuh persetujuan)",
+    "autentikasi token statis (cukup untuk UI lokal; evaluasi bila publik)",
+    "UI/frontend, endpoint CRUD, backup/restore belum dibuat (di luar cakupan H8B)"
+  ],
+  "next_steps": [
+    "terapkan WAL operasional saat disetujui",
+    "endpoint baca dengan get_db() + require_ui_access",
+    "UI browser lokal dengan Authorization: Bearer"
+  ]
+}

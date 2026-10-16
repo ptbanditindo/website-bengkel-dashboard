@@ -1,0 +1,2 @@
+# Keep the data/ directory in version control.
+# Local database files (*.db, *.sqlite, WAL/SHM journals) are git-ignored.

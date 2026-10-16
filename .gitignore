@@ -74,3 +74,19 @@ backups/
 tmp/
 temp/
 *.tmp
+
+# Local database (SQLite)
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+data/*.sqlite
+!data/.gitkeep
+# Baileys gateway (Node.js) + integration secrets
+gateway/node_modules/
+data/baileys_session/
+data/integration_settings.json
+
+# Legacy test-gateway artifacts (gateway-test/ removed)
+data/test_baileys_session/
+data/test_qr.png

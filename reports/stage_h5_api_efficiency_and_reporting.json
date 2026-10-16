@@ -1,0 +1,53 @@
+{
+  "stage": "H5",
+  "title": "Audit Efisiensi API & Verifikasi Tool Laporan",
+  "status": "PASS",
+  "api_requests_live": 2,
+  "deterministic_tests": {"total": 152, "pass": 152, "fail": 0, "skipped": 0},
+  "api_efficiency_analysis": {
+    "instruction_flow_requests": 3,
+    "breakdown": [
+      {"step": 1, "kind": "read", "model_tool_call": true, "api_request": true, "db_mutation": false, "note": "pilihan model (search_vehicle_by_plate)"},
+      {"step": 2, "kind": "mutation_planned", "model_tool_call": true, "api_request": true, "db_mutation": false, "note": "record_service_visit -> pending"},
+      {"step": 3, "kind": "final_answer", "model_tool_call": false, "api_request": true, "db_mutation": false, "note": "konten dibuang (summary dipakai)"}
+    ],
+    "waste_found": "request ke-3 (jawaban akhir) terbukti terbuang; konten model tidak dipakai",
+    "optimization_considered": "hentikan loop setelah mutasi terkumpul (hemat 1 request)",
+    "optimization_applied": false,
+    "optimization_reason_not_applied": "berisiko kehilangan mutasi berikutnya pada alur multi-langkah (legacy create_vehicle + add_service_record)",
+    "code_changed": false
+  },
+  "report_tools_verified": [
+    "count_vehicles",
+    "count_service_records",
+    "report_service_totals",
+    "report_period_summary",
+    "report_top_jobs",
+    "report_vehicles_under_warranty",
+    "report_part_usage",
+    "report_activity_summary",
+    "search_service_records_by_job",
+    "search_vehicles (jenis/tahun)"
+  ],
+  "new_deterministic_tests": 11,
+  "live_test": {
+    "scenario": "report_tool_selection",
+    "status": "PASS",
+    "request_count": 2,
+    "model": "deepseek-flash",
+    "question": "Berapa jumlah kendaraan dan jumlah riwayat servis yang tercatat di database ini?",
+    "fixture": {"vehicles": 2, "service_records": 3, "total_servis": "700000.00"},
+    "tool_calls": [
+      {"name": "count_vehicles", "arguments": "{}"},
+      {"name": "count_service_records", "arguments": "{}"}
+    ],
+    "answer_matches_fixture": true,
+    "model_computed_itself": false
+  },
+  "operational_db": {"intact": true, "vehicles": 1, "service_records": 0},
+  "recommendations": [
+    "jika biaya API kritis, terapkan optimasi 'hentikan loop setelah mutasi' hanya untuk record_service_visit + regresi penuh",
+    "uji Gemini bila GEMINI_API_KEY tersedia",
+    "Telegram end-to-end nyata"
+  ]
+}

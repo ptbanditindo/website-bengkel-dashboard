@@ -1,0 +1,67 @@
+{
+  "stage": "H4",
+  "title": "Audit Regresi H3 & Live Test Terbatas",
+  "status": "PARTIAL PASS",
+  "model": "deepseek-flash",
+  "api_requests_live": 3,
+  "deterministic_tests": {"total": 141, "pass": 141, "fail": 0, "skipped": 0},
+  "audit": {
+    "h3_implementation_present": true,
+    "bugs_found": 0,
+    "files_changed_in_h4": []
+  },
+  "live_requests": [
+    {
+      "id": 1,
+      "scenario": "record_service_visit_mapping",
+      "status": "PASS",
+      "tool_called": "record_service_visit",
+      "arguments": {
+        "nopol": "B3413FED",
+        "nama_client": "Budi",
+        "nomor_wa": "081234567890",
+        "jenis_mobil": "Avanza",
+        "tahun_mobil": 2021,
+        "alamat_client": "Bandung",
+        "jobs": [{"deskripsi": "Ganti radiator"}],
+        "parts": [],
+        "total": "600rb"
+      },
+      "no_premature_mutation": true,
+      "pending_created": true
+    },
+    {
+      "id": 2,
+      "scenario": "confirmation_and_consistency",
+      "status": "PASS",
+      "api_calls": 0,
+      "db_after": {
+        "vehicle_count": 1,
+        "record_count": 1,
+        "total_servis": "600000.00",
+        "biaya_jasa": null,
+        "total_part": null,
+        "no_orphan_vehicle": true
+      }
+    },
+    {
+      "id": 3,
+      "scenario": "report_tool_selection",
+      "status": "SKIPPED",
+      "reason": "budget habis (request 1 memakai seluruh 3 request)"
+    }
+  ],
+  "request_count": 3,
+  "operational_db": {
+    "intact": true,
+    "vehicles": 1,
+    "service_records": 0,
+    "note": "tidak diubah (data lama)"
+  },
+  "limitations": [
+    "tool laporan belum diverifikasi live (Request 3 dilewati karena budget)",
+    "Request 1 memakai 3 request karena model melakukan pembacaan awal sebelum mutasi",
+    "Gemini & Telegram end-to-end nyata belum diuji"
+  ],
+  "conclusion": "inti P1 (record_service_visit + atomik + total-only) terverifikasi live; tool laporan terverifikasi deterministik; satu kriteria live belum terverifikasi"
+}

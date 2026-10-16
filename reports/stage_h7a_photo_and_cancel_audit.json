@@ -1,0 +1,58 @@
+{
+  "stage": "H7A",
+  "title": "Audit Handler Foto & Perbaikan UX Pembatalan",
+  "status": "PASS",
+  "deterministic_tests": {"total": 180, "pass": 180, "fail": 0, "skipped": 0},
+  "new_tests": 14,
+  "cancel_fix": {
+    "file": "bot/ai_handlers.py",
+    "bug": "ai_cancel_callback selalu membalas 'Dibatalkan' walau pop mengembalikan None",
+    "fix": "periksa hasil PendingStore.pop; None -> 'tidak valid'",
+    "preserved": ["user_id check", "TTL", "one-time", "otorisasi @require_auth"]
+  },
+  "photo_audit": {
+    "bug_found": false,
+    "code_changed": false,
+    "checkpoints": {
+      "authorized_only": true,
+      "extraction_failure_no_mutation": true,
+      "ocr_as_proposal": true,
+      "plate_validated": true,
+      "existing_vs_new_vehicle": "existing -> proceed; new -> refused (no orphan)",
+      "incomplete_clarifies": true,
+      "total_only_no_invention": true,
+      "explicit_confirmation": true,
+      "atomic": true,
+      "proper_service": true
+    },
+    "design_notes": [
+      "alur foto mensyaratkan kendaraan sudah terdaftar (tidak membuat kendaraan baru dari foto)",
+      "parts kosong -> total_part=0 (semantik 'tidak ada part', sama dengan alur manual)",
+      "foto 'total saja' tidak didukung (prompt meminta jobs/parts)"
+    ]
+  },
+  "new_cancel_tests": [
+    "test_ai_cancel_valid_token_reports_success",
+    "test_ai_cancel_rejects_invalid_token",
+    "test_ai_cancel_rejects_other_user",
+    "test_ai_cancel_rejects_used_token",
+    "test_ai_cancel_rejects_expired_token",
+    "test_ai_cancel_denies_unauthorized"
+  ],
+  "new_photo_tests": [
+    "test_ai_photo_handler_valid_creates_pending",
+    "test_ai_photo_handler_unclear_plate_refuses",
+    "test_ai_photo_handler_new_vehicle_refuses",
+    "test_ai_photo_handler_extraction_empty_refuses",
+    "test_ai_photo_handler_extraction_error_refuses",
+    "test_ai_photo_handler_confirm_saves",
+    "test_ai_photo_handler_cancel_no_mutation",
+    "test_ai_photo_handler_denies_unauthorized"
+  ],
+  "operational_db": {"intact": true, "vehicles": 1, "service_records": 0},
+  "limitations": [
+    "live Gemini (ekstraksi foto nyata) belum diuji (key kosong)",
+    "live Telegram E2E belum diuji",
+    "pembuatan kendaraan baru dari foto & total-only dari foto belum didukung (di luar cakupan)"
+  ]
+}

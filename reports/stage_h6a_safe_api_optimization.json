@@ -1,0 +1,49 @@
+{
+  "stage": "H6A",
+  "title": "Optimasi API Aman untuk record_service_visit",
+  "status": "PASS",
+  "deterministic_tests": {"total": 155, "pass": 155, "fail": 0, "skipped": 0},
+  "request_counts": {
+    "before": {
+      "record_service_visit_direct": 2,
+      "record_service_visit_with_read": 3,
+      "legacy_create_vehicle": 2
+    },
+    "after": {
+      "record_service_visit_direct": 1,
+      "record_service_visit_with_read": 2,
+      "legacy_create_vehicle": 2
+    },
+    "saved_per_record_service_visit_turn": 1
+  },
+  "code_changes": [
+    {
+      "file": "ai/orchestrator.py",
+      "change": "helper _finalize_pending() + early-return hanya saat semua pending step adalah record_service_visit",
+      "reason": "jawaban akhir setelah record_service_visit tidak pernah dipakai; operasi atomik lengkap"
+    },
+    {
+      "file": "tests/test_ai_orchestrator.py",
+      "change": "3 test baru (mock provider) untuk membuktikan penghematan & alur legacy",
+      "reason": "ukur provider.chat() secara deterministik"
+    }
+  ],
+  "mock_proof": [
+    {"test": "test_record_service_visit_skips_final_answer_call", "provider_calls": 1},
+    {"test": "test_record_service_visit_with_prior_read_uses_two_calls", "provider_calls": 2},
+    {"test": "test_legacy_create_vehicle_still_uses_final_answer", "provider_calls": 2},
+    {"test": "test_handle_message_collects_combined_mutations", "note": "legacy 2 langkah tetap terkumpul"}
+  ],
+  "safety_preserved": [
+    "konfirmasi eksplisit tetap wajib",
+    "tidak ada mutasi prematur di handle_message",
+    "transaksi atomik & rollback tetap aman",
+    "pending action terisolasi/kedaluwarsa/sekali pakai",
+    "alur legacy multi-langkah tidak rusak"
+  ],
+  "operational_db": {"intact": true, "vehicles": 1, "service_records": 0},
+  "live_test": {"ran": false, "reason": "penghematan dibuktikan deterministik via mock; tidak perlu API"},
+  "limitations": [
+    "penghematan dibuktikan mock, bukan live API (sesuai instruksi)"
+  ]
+}

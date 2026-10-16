@@ -1,0 +1,50 @@
+{
+  "stage": "H6B",
+  "title": "Audit & Pengujian Telegram End-to-End",
+  "status": "PARTIAL PASS",
+  "deterministic_tests": {"total": 166, "pass": 166, "fail": 0, "skipped": 0},
+  "new_handler_tests": 11,
+  "audit": {
+    "all_ai_handlers_authorized": true,
+    "no_mutation_without_confirmation": true,
+    "confirm_cancel_user_bound": true,
+    "error_handling_no_partial_mutation": true,
+    "findings": [
+      {
+        "severity": "minor_ux",
+        "location": "bot/ai_handlers.py ai_cancel_callback",
+        "issue": "selalu membalas 'Dibatalkan' walau token invalid/milik pengguna lain (pop mengembalikan None diam)",
+        "security_impact": "none (token pengguna lain tidak terhapus)",
+        "fixed": false,
+        "reason": "bukan bug fungsional/keamanan"
+      }
+    ],
+    "code_changed": false
+  },
+  "integration_tests": {
+    "authorized_response": "test_ai_message_handler_text_response",
+    "unauthorized_rejected": "test_ai_message_handler_denies_unauthorized",
+    "pending_action_valid": "test_ai_message_handler_shows_pending_buttons",
+    "no_data_before_confirm": "test_ai_confirm_record_service_visit_creates_vehicle_and_record",
+    "confirm_1_vehicle_1_record": "test_ai_confirm_record_service_visit_creates_vehicle_and_record",
+    "cancel_no_mutation": "test_ai_cancel_no_db_change",
+    "reused_token_rejected": "test_ai_confirm_rejects_reused_token",
+    "other_user_token_rejected": "test_ai_confirm_rejects_other_user",
+    "search_correct": "test_ai_message_handler_search_read_no_pending (+ test_ai_tools.py)",
+    "report_matches_fixture": "test_ai_message_handler_report_no_pending (+ test_report_tools.py)",
+    "incomplete_clarifies": "test_ai_message_handler_clarification_no_pending",
+    "provider_error_no_mutation": "test_ai_message_handler_provider_error_no_mutation",
+    "invalid_callback_rejected": "test_ai_confirm_rejects_invalid_token"
+  },
+  "live_telegram": {"ran": false, "reason": "butuh akun uji + polling nyata; tidak aman tanpa izin"},
+  "live_api_requests": 0,
+  "operational_db": {"intact": true, "vehicles": 1, "service_records": 0},
+  "limitations": [
+    "live Telegram E2E belum diuji",
+    "ai_cancel_callback tidak validasi token (UX minor)",
+    "alur foto (Gemini) belum diuji (key kosong)"
+  ],
+  "recommendations": [
+    "uji live Telegram satu sesi terkendali dengan akun pemilik + DB uji terisolasi"
+  ]
+}

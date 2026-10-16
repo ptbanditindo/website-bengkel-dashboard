@@ -1,35 +1,30 @@
-version: '3.8'
-
 services:
   telegram-bot:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: finance-bot
+    build: .
+    container_name: ai-bengkel-bot
     restart: unless-stopped
 
-    # Environment variables from .env file
     environment:
       - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - GOOGLE_SHEETS_CREDENTIALS_JSON=${GOOGLE_SHEETS_CREDENTIALS_JSON}
-      - SPREADSHEET_ID=${SPREADSHEET_ID}
       - AUTHORIZED_USER_ID=${AUTHORIZED_USER_ID}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - DEEPSEEK_MODEL=${DEEPSEEK_MODEL:-deepseek-flash}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.8-flash}
+      - DATABASE_URL=sqlite:///./data/workshop.db
+      - APP_HOST=${APP_HOST:-127.0.0.1}
+      - APP_PORT=${APP_PORT:-8000}
+      - BOT_DATA_FILE=/app/data/bot_data.pickle
 
     volumes:
-      # Persistent data directory
       - bot-data:/app/data
-      # Optional: logs directory
-      - ./logs:/app/logs
 
-    # Logging configuration
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
 
-# Named volumes for persistent data
 volumes:
   bot-data:
-    driver: local
+

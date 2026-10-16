@@ -1,0 +1,76 @@
+{
+  "stage": "H8A",
+  "title": "Audit Kesiapan UI Lokal",
+  "status": "PARTIAL PASS",
+  "audit_only": true,
+  "files_changed_during_audit": [],
+  "architecture": {
+    "bot_entry": "main.py -> bot.application.run()",
+    "telegram_framework": "python-telegram-bot",
+    "backend_http": "FastAPI (minimal, health only)",
+    "ui_web": "none (no templates/static/frontend)",
+    "config": ".env via dotenv, APP_HOST default 127.0.0.1",
+    "ui_dependencies": "fastapi + uvicorn present; no HTML/template framework",
+    "docker": "bot-only container + bot-data volume"
+  },
+  "database_migrations": {
+    "model": "Vehicle.nama_client nullable=True, nopol unique, 1-N relations",
+    "recorded_alembic_version": "fa7fa27bbb86",
+    "pending_migration": "c7c0a1b2c3d4_make_nama_client_optional",
+    "pending_migration_effect": "non-destructive (drop NOT NULL on nama_client)",
+    "operational_db": {"vehicles": 1, "service_records": 0, "alembic": "fa7fa27bbb86"}
+  },
+  "readiness_matrix": {
+    "dashboard_vehicle_count": "SIAP",
+    "dashboard_service_count": "SIAP",
+    "dashboard_recent_activity": "SEBAGIAN",
+    "dashboard_incomplete_vehicles": "SEBAGIAN",
+    "vehicle_list": "SIAP",
+    "vehicle_search_normalize": "SIAP",
+    "vehicle_detail": "SIAP",
+    "vehicle_completeness_status": "SIAP",
+    "edit_fields": "SIAP",
+    "edit_validation_duplicate": "SIAP",
+    "service_history_detail": "SIAP",
+    "service_history_relation": "SIAP",
+    "backup_restore": "BELUM SIAP",
+    "api_auth": "BELUM SIAP"
+  },
+  "risks": [
+    "SQLite concurrency (no WAL/busy_timeout) -> 'database is locked' when bot + UI write concurrently",
+    "API auth missing -> any local process could access/mutate once data endpoints exist",
+    "APP_HOST=0.0.0.0 would expose the API publicly without auth",
+    "customer data leakage if API not local-only + authenticated",
+    "VPS vs local: SQLite is local to process host; a UI on another machine cannot share it directly",
+    "pending migration c7c0a1b2c3d4 (safe but will apply on next init_db)"
+  ],
+  "recommended_architecture": {
+    "backend": "FastAPI (existing), endpoints use get_db() + same services as bot",
+    "ui": "local browser pages calling the API",
+    "single_database": true,
+    "access": "bind 127.0.0.1 + simple token auth",
+    "no_ai_api_for_ui": true,
+    "vps_vs_local": "run API on same host as DB + SSH tunnel/VPN/auth HTTPS, or move to shared PostgreSQL"
+  },
+  "next_implementation_steps": [
+    "API auth + loopback bind",
+    "read endpoints (dashboard, vehicles, history)",
+    "edit endpoint (update_vehicle)",
+    "backup/restore endpoints",
+    "SQLite WAL + busy_timeout",
+    "minimal HTML UI",
+    "UI tests (temp DB) + regression"
+  ],
+  "tests_run": {"command": "python -m pytest -q", "passed": 199, "failed": 0, "skipped": 0},
+  "git_status": {
+    "modified_tracked": [".env.example", ".gitignore", "Dockerfile", "README.md", "docker-compose.yml", "main.py", "requirements.txt"],
+    "untracked": ["ai/", "api/", "bot/", "data/", "database/", "migrations/", "reports/", "repositories/", "services/", "tests/", "run_api.py", "alembic.ini"],
+    "note": "tidak diubah selama H8A"
+  },
+  "unverified": [
+    "Gemini OCR on real photo (key empty)",
+    "live Telegram E2E",
+    "real SQLite concurrency between bot and UI (no UI yet)",
+    "operational customer data not read (only record counts verified)"
+  ]
+}

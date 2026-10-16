@@ -1,0 +1,62 @@
+{
+  "stage": "H7B",
+  "title": "Audit Kesiapan Gemini & Foto",
+  "status": "PARTIAL PASS",
+  "deterministic_tests": {"total": 189, "pass": 189, "fail": 0, "skipped": 0},
+  "new_tests": 9,
+  "config_audit": {
+    "deepseek_primary_text": true,
+    "gemini_image_only": true,
+    "keys_optional_no_crash": true,
+    "unconfigured_controlled_error": true,
+    "no_silent_fallback": true,
+    "no_credential_leak": true,
+    "no_live_api_in_deterministic_tests": true,
+    "gemini_empty_photo_fails_safely": true,
+    "gemini_api_key": "kosong",
+    "deepseek_api_key": "tersedia"
+  },
+  "photo_flow_audit": {
+    "1_correct_provider": true,
+    "2_format_size_safe": true,
+    "3_empty_invalid_json_no_mutation": true,
+    "4_timeout_clear_message": true,
+    "5_plate_normalized_matched": true,
+    "6_draft_not_fact": true,
+    "7_confirm_before_save": true,
+    "8_no_retry_extra_calls": true,
+    "9_unknown_price_not_invented": true,
+    "10_error_keeps_auth_db_integrity": true
+  },
+  "code_change": {
+    "file": "bot/ai_handlers.py",
+    "changes": [
+      "IMAGE_EXTRACTION_PROMPT menambah kunci total",
+      "_build_service_draft menambah cross-check total vs jumlah rincian (diagnostik)",
+      "tambah helper _coerce_money dan _sum_item_prices"
+    ],
+    "reason": "validasi total nota terhadap jumlah item (ground truth Rp1.825.000)",
+    "storage_unchanged": true
+  },
+  "dava_nota_ground_truth": {
+    "items": [
+      {"name": "bongkar pasang service radiator", "qty": 1, "price": 575000},
+      {"name": "jasa storing", "qty": 1, "price": 200000},
+      {"name": "service radiator coller", "qty": 1, "price": 275000},
+      {"name": "uppertank", "qty": 1, "price": 775000}
+    ],
+    "total": 1825000,
+    "sum_matches": true,
+    "note": "fixture teks, bukan foto/OCR asli"
+  },
+  "operational_db": {"intact": true, "vehicles": 1, "service_records": 0},
+  "limitations": [
+    "OCR Gemini pada foto nyata belum diuji (key kosong)",
+    "alur foto tetap mensyaratkan kendaraan sudah terdaftar",
+    "header konfirmasi '✅ Berhasil' tidak berubah walau execute_pending bisa gagal (UX umum, tidak diperbaiki)"
+  ],
+  "evidence_separation": {
+    "mock_fixture": "verifikasi logika struktur/total/keamanan, bukan OCR",
+    "gemini_ocr_live": "belum diuji"
+  }
+}

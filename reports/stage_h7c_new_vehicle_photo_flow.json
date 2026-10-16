@@ -1,0 +1,53 @@
+{
+  "stage": "H7C",
+  "title": "Alur Foto Nota, Pendaftaran Kendaraan Baru, dan Kesiapan UI Lokal",
+  "status": "PARTIAL PASS",
+  "deterministic_tests": {"total": 199, "pass": 199, "fail": 0, "skipped": 0},
+  "new_tests": 10,
+  "updated_tests": 5,
+  "files_changed": [
+    "database/models.py",
+    "migrations/versions/c7c0a1b2c3d4_make_nama_client_optional.py",
+    "services/service_record_service.py",
+    "ai/orchestrator.py",
+    "ai/tools.py",
+    "bot/ai_runtime.py",
+    "bot/ai_handlers.py",
+    "tests/*"
+  ],
+  "photo_flow": {
+    "existing_vehicle": "add_service_record (tanpa duplikat, tanpa ubah data pelanggan)",
+    "new_vehicle": "record_service_visit atomik dengan nama/WA/jenis/tahun/alamat kosong",
+    "missing_plate": "simpan PhotoDraft (user-bound + TTL + sekali pakai) lalu minta plat",
+    "caption_plate": "update.message.caption diprioritaskan"
+  },
+  "name_optional": {
+    "schema": "Vehicle.nama_client nullable=True",
+    "service": "record_service_visit memakai clean_optional",
+    "manual_flow": "create_vehicle tetap clean_required (tidak berubah)",
+    "chat_flow": "_plan_record_service_visit tetap mensyaratkan nama untuk kendaraan baru"
+  },
+  "confirm_message_accuracy": {
+    "execute_pending": "re-raise ServiceError/exception setelah rollback",
+    "success_message": "hanya setelah commit",
+    "failure_message": "tanpa 'Berhasil'"
+  },
+  "ui_local_readiness": {
+    "update_vehicle_supports_fields": true,
+    "records_preserved_on_update": true,
+    "no_new_table_needed": true
+  },
+  "operational_db": {
+    "intact": true,
+    "vehicles": 1,
+    "service_records": 0,
+    "alembic_version": "fa7fa27bbb86",
+    "pending_migration": "c7c0a1b2c3d4"
+  },
+  "live_api": {"deepseek": false, "gemini": false, "telegram_polling": false},
+  "limitations": [
+    "OCR Gemini foto nyata belum diuji (key kosong)",
+    "live Telegram E2E belum diuji",
+    "migrasi c7c0a1b2c3d4 pending (belum diterapkan ke DB operasional)"
+  ]
+}

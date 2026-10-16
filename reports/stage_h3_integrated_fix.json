@@ -1,0 +1,61 @@
+{
+  "stage": "H3",
+  "title": "Perbaikan Terintegrasi AI Bengkel Telegram",
+  "status": "PARTIAL PASS",
+  "api_requests_live": 0,
+  "live_api_rerun": false,
+  "deterministic_tests": {"total": 141, "pass": 141, "fail": 0, "skipped": 0},
+  "operational_db": {
+    "intact": true,
+    "vehicles": 1,
+    "service_records": 0,
+    "note": "1 kendaraan tanpa servis adalah bukti Bug H1; tidak diubah"
+  },
+  "root_causes_confirmed": [
+    {"id": "H2-1", "cause": "validate_price pakai Decimal(str(value)); tidak ada parser uang Indonesia", "evidence": "services/validation.py lama + test_parse_money"},
+    {"id": "H1/H2-2", "cause": "create_vehicle & add_service_record commit terpisah; execute_pending non-atomik", "evidence": "service layer + orchestrator lama; DB operasional 1 kendaraan 0 servis"},
+    {"id": "H2-3", "cause": "tidak ada tool laporan/agregasi; search hanya nama/plat; tidak ada search by pekerjaan", "evidence": "ai/tools.py lama (10 tool)"},
+    {"id": "H2-4", "cause": "write_reports JSON memakai Path sebagai file", "evidence": "runner; sudah diperbaiki"}
+  ],
+  "unproven_suspicions": [
+    "akurasi pemetaan argumen model DeepSeek (jenis+tahun, dll) — butuh live API"
+  ],
+  "files_changed": [
+    "services/pricing.py",
+    "services/validation.py",
+    "services/service_record_service.py",
+    "services/vehicle_service.py",
+    "services/reporting.py",
+    "repositories/vehicle_repository.py",
+    "ai/tools.py",
+    "ai/orchestrator.py",
+    "tests/test_pricing.py",
+    "tests/test_service_record_service.py",
+    "tests/test_reporting.py",
+    "tests/test_ai_tools.py",
+    "tests/test_ai_orchestrator.py",
+    "tests/test_ai_handlers.py"
+  ],
+  "fixes_summary": [
+    "parser uang Indonesia (600rb, Rp600.000, 1,5 juta) di parse_money",
+    "record_service_visit: kendaraan + servis atomik dalam satu transaksi",
+    "execute_pending atomik (commit sekali, rollback gabungan)",
+    "total-only tidak memecah nominal; breakdown tak diketahui tetap NULL",
+    "tool laporan & agregasi (ReportingService) + pencarian jenis/tahun/pekerjaan",
+    "SYSTEM_PROMPT mengarahkan model ke record_service_visit"
+  ],
+  "verification": {
+    "vehicle_service_consistency": "passed (deterministik)",
+    "query_and_reports": "passed (deterministik)"
+  },
+  "remaining_work": [
+    "live test terbatas untuk verifikasi akurasi model (butuh persetujuan)",
+    "Gemini image extraction belum diuji (key kosong)",
+    "Telegram end-to-end nyata belum diuji",
+    "data/workshop.db masih 1 kendaraan tanpa servis (data lama, tidak disentuh)"
+  ],
+  "limitations": [
+    "semua pengujian H3 deterministik lokal, bukan kemampuan model live",
+    "hasil H2 50 status belum terverifikasi (lihat stage_h2_clarification.md)"
+  ]
+}
