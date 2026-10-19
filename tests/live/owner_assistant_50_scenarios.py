@@ -16,26 +16,28 @@ import shutil
 import sys
 import tempfile
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-
+import pytest
 from dotenv import load_dotenv
+from sqlalchemy.orm import sessionmaker
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 load_dotenv()
 
-from sqlalchemy.orm import sessionmaker
+from ai.providers import DeepSeekProvider  # noqa: E402
+from bot.ai.context import ConversationHistory  # noqa: E402
+from bot.ai.orchestrator import AIOrchestrator  # noqa: E402
+from bot.ai.tools import TOOL_SCHEMAS  # noqa: E402
+from database.models import ServiceRecord, Vehicle  # noqa: E402
+from database.session import _build_engine, _ensure_sqlite_directory, run_migrations  # noqa: E402
+from services.service_record_service import ServiceRecordService  # noqa: E402
+from services.vehicle_service import VehicleService  # noqa: E402
 
-from ai.context import ConversationHistory
-from ai.orchestrator import AIOrchestrator
-from ai.providers import DeepSeekProvider
-from ai.tools import TOOL_SCHEMAS
-from database.models import ServiceRecord, Vehicle
-from database.session import _build_engine, _ensure_sqlite_directory, run_migrations
-from services.service_record_service import ServiceRecordService
-from services.vehicle_service import VehicleService
+pytestmark = pytest.mark.live
 
 
 # ---------------------------------------------------------------------------
@@ -673,7 +675,7 @@ async def h047(client, session):
 @register("H048", "Error provider (kontrol, bukan live)", "F", "deterministic")
 async def h048(client, session):
     from ai.errors import AIProviderError
-    from ai.orchestrator import AIOrchestrator
+    from bot.ai.orchestrator import AIOrchestrator
 
     class Failing:
         async def chat(self, messages, tools=None):
@@ -695,7 +697,7 @@ async def h049(client, session):
 
 @register("H050", "Isolasi pending action antar sesi", "F", "deterministic")
 async def h050(client, session):
-    from ai.tools import PendingStore
+    from bot.ai.tools import PendingStore
     store = PendingStore()
     a = store.add(1, [{"tool": "create_vehicle", "arguments": {"nopol": "B1234XYZ"}}], "summary A")
     ok = store.get(a.token, 2) is None and store.get(a.token, 1) is not None

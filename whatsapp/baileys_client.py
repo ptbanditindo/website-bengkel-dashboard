@@ -1,4 +1,4 @@
-"""HTTP client for the Knightbot-MD WhatsApp bridge.
+"""HTTP client for the Baileys WhatsApp gateway bridge (gateway/whatsapp_bridge.js).
 
 Talks to 127.0.0.1 only, with the internal token. Never exposed to the browser.
 """

@@ -3,10 +3,10 @@
 import pytest
 from sqlalchemy.orm import sessionmaker
 
-from ai.context import ConversationHistory
+from bot.ai.context import ConversationHistory
 from ai.errors import AIError, AIProviderError
-from ai.orchestrator import AIOrchestrator
-from ai.tools import PendingStore
+from bot.ai.orchestrator import AIOrchestrator
+from bot.ai.tools import PendingStore
 from database.models import ServiceRecord, Vehicle
 from services.exceptions import ValidationError
 

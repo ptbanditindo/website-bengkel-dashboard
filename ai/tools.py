@@ -5,7 +5,6 @@ mutation tools produce a ``PendingConfirmation`` that the bot turns into a user
 confirmation before anything is written.
 """
 
-import json
 import logging
 import time
 import uuid

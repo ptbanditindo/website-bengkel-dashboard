@@ -1,4 +1,4 @@
-"""Backend connection tests for Telegram / DeepSeek / Gemini (real calls).
+"""Backend connection tests for Telegram / DeepSeek / OpenRouter (real calls).
 
 Automated tests must monkeypatch these functions; they never run against real
 accounts or production keys.
@@ -6,6 +6,7 @@ accounts or production keys.
 
 import asyncio
 import json
+import os
 import urllib.request
 
 
@@ -38,16 +39,17 @@ def test_deepseek_key(key: str) -> dict:
         return {"valid": False, "error": str(e)}
 
 
-def test_gemini_key(key: str) -> dict:
+def test_openrouter_key(key: str) -> dict:
     key = (key or "").strip()
     if not key:
         return {"valid": False, "error": "API key kosong."}
+    model = (os.getenv("OPENROUTER_CHAT_MODEL") or "").strip()
+    if not model:
+        return {"valid": False, "error": "OPENROUTER_CHAT_MODEL belum disetel."}
     try:
-        import os
-        from openai import AsyncOpenAI
-        model = os.getenv("GEMINI_MODEL") or "gemini-2.0-flash"
-        client = AsyncOpenAI(api_key=key, base_url="https://generativelanguage.googleapis.com/v1beta/openai/", timeout=15.0)
-        asyncio.run(client.chat.completions.create(model=model, messages=[{"role": "user", "content": "ping"}]))
+        from ai.providers import OpenRouterProvider
+        provider = OpenRouterProvider(api_key=key, model=model)
+        asyncio.run(provider.chat([{"role": "user", "content": "ping"}]))
         return {"valid": True}
     except Exception as e:
         return {"valid": False, "error": str(e)}

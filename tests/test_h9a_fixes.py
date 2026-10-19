@@ -9,9 +9,9 @@ from sqlalchemy.orm import sessionmaker
 
 import bot.ai_handlers as ai_handlers
 import bot.ai_runtime as ai_runtime
-from ai.context import ConversationStore
-from ai.orchestrator import AIOrchestrator
-from ai.tools import PendingStore
+from bot.ai.context import ConversationStore
+from bot.ai.orchestrator import AIOrchestrator
+from bot.ai.tools import PendingStore
 from services import validation
 from services.exceptions import ValidationError
 from services.pricing import parse_money

@@ -1,1 +1,1 @@
-"""AI integration package: providers, tools, and conversation orchestration."""
+"""Shared AI integration package: providers and error contract."""

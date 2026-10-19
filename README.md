@@ -3,18 +3,18 @@
 Asisten AI untuk mengelola bengkel mobil: pelanggan, kendaraan, riwayat servis, suku cadang, biaya jasa, garansi, dan layanan WhatsApp — lengkap dengan dashboard admin lokal (web).
 
 - **Dashboard web lokal** — panel admin (login token) untuk mengelola kendaraan, riwayat servis, garansi, stok, harga jasa, laporan, serta backup/restore.
-- **Telegram bot** — asisten AI (DeepSeek) memahami bahasa Indonesia sehari-hari dan memanggil tool bisnis; perintah manual tetap tersedia.
+- **Telegram bot** — asisten AI (DeepSeek/OpenRouter) memahami bahasa Indonesia sehari-hari dan memanggil tool bisnis; perintah manual tetap tersedia.
 - **WhatsApp CS** — customer service AI via WhatsApp (Baileys gateway) dengan takeover owner, kandidat kendaraan, rencana kedatangan, dan pertanyaan owner.
 - **Perhitungan di kode** — subtotal, total part, biaya jasa, total servis, dan profit dihitung aplikasi (Decimal), bukan AI.
 - **Garansi** — setiap servis punya `garansi_sampai` dan status klaim (Belum claim / Sudah claim).
-- **Gambar** — Gemini (opsional) mengekstrak nota/foto; hasil harus dikonfirmasi sebelum disimpan.
+- **Gambar** — OpenRouter vision mengekstrak nota/foto; hasil harus dikonfirmasi sebelum disimpan.
 - **Backup & restore** — database SQLite dapat di-backup/di-restore dari dashboard.
 
 ## Tech Stack
 
 - Python 3.10+
 - python-telegram-bot
-- DeepSeek API dan Gemini API (OpenAI-compatible)
+- DeepSeek API dan OpenRouter API (OpenAI-compatible)
 - SQLAlchemy + Alembic + SQLite
 - FastAPI + uvicorn (API & dashboard)
 - Node.js + Baileys (gateway WhatsApp)
@@ -22,16 +22,17 @@ Asisten AI untuk mengelola bengkel mobil: pelanggan, kendaraan, riwayat servis, 
 
 ## Struktur
 
-    ai/            provider AI, tool, orkestrasi percakapan
+    ai/            provider AI bersama (DeepSeek + OpenRouter) + error
     api/           REST API + dashboard lokal (FastAPI)
     bot/           handler, otorisasi, interaksi Telegram
+    bot/ai/        orkestrasi, tool, dan context AI Telegram
     whatsapp/      layanan & model WhatsApp CS
-    Knightbot-MD/   bot WhatsApp Baileys + bridge HTTP
+    gateway/       bot WhatsApp Baileys + bridge HTTP (Node.js)
     config/        penyimpanan kredensial integrasi (server-side)
     database/      model, engine, session
     repositories/  akses data
     services/      logika bisnis
-    static/        UI dashboard (HTML/JS/CSS)
+    frontend/      UI dashboard (HTML/JS/CSS)
     migrations/    migrasi skema Alembic
     tests/         pengujian otomatis
     data/          database & sesi lokal (di-gitignore)
@@ -52,11 +53,6 @@ Asisten AI untuk mengelola bengkel mobil: pelanggan, kendaraan, riwayat servis, 
        copy .env.example .env
 
 4. Isi `.env` (lihat Konfigurasi di bawah).
-5. (Opsional) Untuk WhatsApp CS, install dan jalankan Knightbot-MD:
-
-       cd Knightbot-MD
-       npm install
-       npm start
 
 ## Konfigurasi (.env)
 
@@ -66,19 +62,22 @@ Asisten AI untuk mengelola bengkel mobil: pelanggan, kendaraan, riwayat servis, 
 | AUTHORIZED_USER_ID | Ya | ID user Telegram yang diizinkan (pisahkan koma) |
 | DATABASE_URL | Ya | sqlite:///./data/workshop.db (default) |
 | UI_ACCESS_TOKEN | Ya (dashboard) | Token akses dashboard/API (bearer) |
-| DEEPSEEK_API_KEY | Tidak | API key DeepSeek (percakapan AI) |
+| AI_PROVIDER | Tidak | `deepseek` (default) atau `openrouter` |
+| DEEPSEEK_API_KEY | Tidak | API key DeepSeek (dipakai bila `AI_PROVIDER=deepseek`) |
 | DEEPSEEK_MODEL | Tidak | default deepseek-flash |
-| GEMINI_API_KEY | Tidak | API key Gemini (gambar) |
-| GEMINI_MODEL | Tidak | default gemini-3.8-flash |
+| OPENROUTER_API_KEY | Tidak | API key OpenRouter (chat + vision) |
+| OPENROUTER_CHAT_MODEL | Tidak | ID model OpenRouter untuk percakapan/tool calling |
+| OPENROUTER_VISION_MODEL | Tidak | ID model OpenRouter untuk membaca foto nota |
 | APP_HOST | Tidak | default 127.0.0.1 |
 | APP_PORT | Tidak | default 8000 |
 | BACKUP_DIR | Tidak | default data/backups |
 
 Perilaku saat API key kosong:
-- `DEEPSEEK_API_KEY` kosong -> AI percakapan memberi tahu belum dikonfigurasi; perintah manual (/daftar, /servis, dll.) tetap berfungsi.
-- `GEMINI_API_KEY` kosong -> pemrosesan foto memberi tahu fitur belum tersedia; percakapan teks tetap berfungsi.
+- Provider chat terpilih kosong -> AI percakapan memberi tahu belum dikonfigurasi; perintah manual (/daftar, /servis, dll.) tetap berfungsi.
+- `OPENROUTER_API_KEY` kosong -> pemrosesan foto memberi tahu fitur belum tersedia; percakapan teks tetap berfungsi.
+- OpenRouter dapat dipakai mandiri tanpa `DEEPSEEK_API_KEY` saat `AI_PROVIDER=openrouter`.
 
-Jangan menaruh API key di source code atau commit `.env`. Kredensial integrasi (Telegram/DeepSeek/Gemini) juga bisa dikelola dari dashboard (menu Integrasi) dan disimpan di `data/integration_settings.json` (di-gitignore, tidak pernah disajikan sebagai file statis).
+Jangan menaruh API key di source code atau commit `.env`. Kredensial integrasi (Telegram/DeepSeek/OpenRouter) dan konfigurasi provider juga bisa dikelola dari dashboard (menu Integrasi) dan disimpan di `data/integration_settings.json` (di-gitignore, tidak pernah disajikan sebagai file statis). Perubahan memerlukan restart untuk aktif.
 
 ## Database
 
@@ -131,7 +130,7 @@ Selain perintah, cukup ketik kalimat biasa (mis. catat servis mobil B 1234 ABC g
 
 ## Catatan
 
-- Pengujian terhadap API DeepSeek/Gemini nyata belum dilakukan (semua tes memakai mock). Tes integrasi nyata memerlukan persetujuan terpisah.
+- Pengujian terhadap API DeepSeek/OpenRouter nyata belum dilakukan (semua tes memakai mock). Tes integrasi nyata memerlukan persetujuan terpisah.
 - Konfirmasi AI bersifat sementara (in-memory) dan batal saat restart; token terikat pada user dan kedaluwarsa otomatis.
 
 ## License

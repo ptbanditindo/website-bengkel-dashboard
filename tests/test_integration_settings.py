@@ -68,16 +68,19 @@ def test_auth_required(env):
 
 def test_status_masks_secrets(env):
     settings_store.set("deepseek_api_key", "sk-abcdef1234567890")
+    settings_store.set("openrouter_api_key", "sk-or-abcdef1234567890")
     r = env.get("/api/integrations/status", headers=AUTH)
     body = r.json()
     assert "sk-abcdef1234567890" not in r.text
+    assert "sk-or-abcdef1234567890" not in r.text
     assert body["providers"]["deepseek"]["masked"] != "sk-abcdef1234567890"
+    assert body["providers"]["openrouter"]["masked"] != "sk-or-abcdef1234567890"
 
 
 def test_empty_value_does_not_save(env):
     with pytest.raises(ValueError):
-        settings_store.set("gemini_api_key", "")
-    assert settings_store.get("gemini_api_key") is None
+        settings_store.set("openrouter_api_key", "")
+    assert settings_store.get("openrouter_api_key") is None
 
 
 def test_telegram_save_invalid_does_not_replace(env, monkeypatch):
@@ -97,9 +100,9 @@ def test_telegram_test_valid_mock(env, monkeypatch):
 
 def test_ai_test_mock(env, monkeypatch):
     monkeypatch.setattr("api.integration_routes.testing_mod.test_deepseek_key", lambda k: {"valid": True})
-    monkeypatch.setattr("api.integration_routes.testing_mod.test_gemini_key", lambda k: {"valid": False, "error": "x"})
+    monkeypatch.setattr("api.integration_routes.testing_mod.test_openrouter_key", lambda k: {"valid": False, "error": "x"})
     assert env.post("/api/integrations/deepseek/test", json={"value": "k"}, headers=AUTH).json()["valid"] is True
-    assert env.post("/api/integrations/gemini/test", json={"value": "k"}, headers=AUTH).json()["valid"] is False
+    assert env.post("/api/integrations/openrouter/test", json={"value": "k"}, headers=AUTH).json()["valid"] is False
 
 
 def test_gateway_status_honest_unavailable(env, monkeypatch):
@@ -123,7 +126,7 @@ def test_inbound_dedup_and_reply(env, monkeypatch):
     class FakeAgent:
         async def reply(self, wa_number, text, wdb, main):
             return "balasan demo"
-    import api.integration_routes as ir
+    import api.whatsapp_routes as ir
     monkeypatch.setattr(ir, "WhatsAppAgent", lambda: FakeAgent())
     import whatsapp.baileys_client as bc
     monkeypatch.setattr(bc, "status", lambda: {"status": "disconnected"})
@@ -166,7 +169,7 @@ def test_inbound_whatsapp_db_unavailable_fail_closed(env, monkeypatch):
 
 
 def test_reply_delay_is_5_seconds():
-    from api.integration_routes import WA_REPLY_DELAY_SECONDS, _reply_delay
+    from api.whatsapp_routes import WA_REPLY_DELAY_SECONDS, _reply_delay
 
     assert WA_REPLY_DELAY_SECONDS == 5
     assert _reply_delay() == 5
@@ -175,7 +178,7 @@ def test_reply_delay_is_5_seconds():
 def test_inbound_applies_delay_once(env, monkeypatch):
     import types
 
-    import api.integration_routes as ir
+    import api.whatsapp_routes as ir
     import whatsapp.baileys_client as bc
 
     class FakeAgent:

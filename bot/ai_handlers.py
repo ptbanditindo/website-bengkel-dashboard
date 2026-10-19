@@ -7,7 +7,7 @@ from decimal import Decimal
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-from ai.errors import AIError, AIProviderError
+from ai.errors import AIError
 from bot.ai_runtime import get_runtime
 from bot.auth import require_auth
 from database.models import normalize_plate
@@ -73,9 +73,9 @@ async def ai_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await _process_photo_plate(update, text, draft.data)
         return
 
-    if not runtime.deepseek.configured:
+    if not runtime.chat.configured:
         await update.message.reply_text(
-            "❌ AI belum dikonfigurasi (DEEPSEEK_API_KEY kosong).\n"
+            "❌ AI belum dikonfigurasi (API key provider chat kosong).\n"
             "Anda tetap bisa memakai perintah manual: /daftar, /servis, /cari, /riwayat, /garansi."
         )
         return
@@ -144,9 +144,9 @@ async def ai_cancel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 @require_auth
 async def ai_photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     runtime = get_runtime()
-    if not runtime.gemini.configured:
+    if not runtime.vision.configured:
         await update.message.reply_text(
-            "📷 Pemrosesan gambar belum tersedia (GEMINI_API_KEY kosong).\n"
+            "📷 Pemrosesan gambar belum tersedia (OPENROUTER_API_KEY kosong).\n"
             "Anda bisa mencatat servis manual lewat /servis."
         )
         return
@@ -166,8 +166,8 @@ async def ai_photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        raw = await runtime.gemini.extract(image_bytes, "image/jpeg", IMAGE_EXTRACTION_PROMPT)
-    except AIProviderError as e:
+        raw = await runtime.vision.extract(image_bytes, "image/jpeg", IMAGE_EXTRACTION_PROMPT)
+    except AIError as e:
         await update.message.reply_text(f"❌ {e}\nGunakan input manual: /servis")
         return
 

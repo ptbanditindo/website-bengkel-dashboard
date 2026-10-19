@@ -79,7 +79,7 @@ def build_application() -> Application:
     application.add_handler(CallbackQueryHandler(confirm_delete_callback, pattern="^confirm_delete_"))
     application.add_handler(CallbackQueryHandler(cancel_callback, pattern="^(cancel_klaim|cancel_delete)$"))
 
-    # AI-driven handlers (DeepSeek chat + Gemini image + confirmation)
+    # AI-driven handlers (AI chat + vision + confirmation)
     application.add_handler(MessageHandler(filters.PHOTO & filters.ChatType.PRIVATE, ai_photo_handler))
     application.add_handler(CallbackQueryHandler(ai_confirm_callback, pattern="^ai_confirm_"))
     application.add_handler(CallbackQueryHandler(ai_cancel_callback, pattern="^ai_cancel_"))

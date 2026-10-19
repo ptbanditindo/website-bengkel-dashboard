@@ -12,6 +12,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import pytest
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -23,13 +25,15 @@ from sqlalchemy import create_engine, event  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 
 import database.models  # noqa: E402,F401
-from ai.context import ConversationHistory  # noqa: E402
-from ai.orchestrator import AIOrchestrator  # noqa: E402
+from bot.ai.context import ConversationHistory  # noqa: E402
+from bot.ai.orchestrator import AIOrchestrator  # noqa: E402
 from ai.providers import DeepSeekProvider  # noqa: E402
-from ai.tools import PendingStore  # noqa: E402
+from bot.ai.tools import PendingStore  # noqa: E402
 from database.base import Base  # noqa: E402
 from services.service_record_service import ServiceRecordService  # noqa: E402
 from services.vehicle_service import VehicleService  # noqa: E402
+
+pytestmark = pytest.mark.live
 
 MAX_REQUESTS = 3
 

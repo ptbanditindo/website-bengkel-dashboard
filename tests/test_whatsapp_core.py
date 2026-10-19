@@ -1,18 +1,15 @@
-"""Tests for WhatsApp CS core: db, normalize, isolation, dedup, queue, gateway, agent security."""
+"""Tests for WhatsApp CS core: db, normalize, isolation, dedup, agent security."""
 
 import pytest
 from sqlalchemy.orm import sessionmaker
 
-from database.models import HargaJasa, StockItem, Vehicle
+from database.models import StockItem
 from services.exceptions import ValidationError
-from services.harga_jasa_service import HargaJasaService
 from services.service_record_service import ServiceRecordService
 from services.stock_service import StockService
 from services.vehicle_service import VehicleService
 from whatsapp.agent import WA_SECURITY_RULES, build_system_prompt, run_restricted_tool
-from whatsapp.gateway import MockGateway
 from whatsapp.normalize import normalize_wa_number
-from whatsapp.queue import PerNumberQueue
 from whatsapp.services import (
     ArrivalService,
     ContactService,
@@ -68,23 +65,6 @@ def test_message_dedup_by_gateway_id(wa_session):
     wa_session.commit()
     assert created1 is True and created2 is False
     assert m1.id == m2.id
-
-
-def test_queue_per_number_independent():
-    q = PerNumberQueue(default_delay_seconds=100)
-    q.enqueue("A", "msg-a", 100)
-    q.enqueue("B", "msg-b", 0)
-    due = [n for n, _ in q.pop_due()]
-    assert "B" in due
-    assert "A" not in due
-
-
-def test_gateway_mock_honest():
-    g = MockGateway()
-    assert g.status().connected is False
-    assert g.status().provider == "mock"
-    g.send_message("0812", "halo")
-    assert len(g.sent) == 1
 
 
 def test_matching_unique(session):

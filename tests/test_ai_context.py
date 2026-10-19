@@ -1,6 +1,6 @@
 """Tests for conversation history management."""
 
-from ai.context import ConversationHistory, ConversationStore
+from bot.ai.context import ConversationHistory, ConversationStore
 
 
 def test_history_trims_to_max():

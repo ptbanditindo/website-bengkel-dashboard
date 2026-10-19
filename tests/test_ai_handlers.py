@@ -8,10 +8,9 @@ from sqlalchemy.orm import sessionmaker
 
 import bot.ai_handlers as ai_handlers
 import bot.ai_runtime as ai_runtime
-from ai.context import ConversationStore
+from bot.ai.context import ConversationStore
 from ai.errors import AIProviderError
-from ai.orchestrator import AIOrchestrator
-from ai.tools import PendingStore
+from bot.ai.orchestrator import AIOrchestrator
 from database.models import ServiceRecord, Vehicle
 
 
@@ -59,10 +58,10 @@ def db_factory(engine, monkeypatch):
     return factory
 
 
-def _install_runtime(monkeypatch, deepseek=None):
+def _install_runtime(monkeypatch, chat=None):
     runtime = ai_runtime.AIRuntime()
-    runtime.deepseek = deepseek if deepseek is not None else FakeDeepSeek({"content": "ok", "tool_calls": []})
-    runtime.orchestrator = AIOrchestrator(runtime.deepseek, runtime.pending_store)
+    runtime.chat = chat if chat is not None else FakeDeepSeek({"content": "ok", "tool_calls": []})
+    runtime.orchestrator = AIOrchestrator(runtime.chat, runtime.pending_store)
     runtime.conversations = ConversationStore()
     monkeypatch.setattr(ai_handlers, "get_runtime", lambda: runtime)
     return runtime
@@ -75,8 +74,8 @@ def _tool_call(name, arguments):
 @pytest.mark.asyncio
 async def test_ai_message_handler_not_configured(monkeypatch, db_factory):
     runtime = _install_runtime(monkeypatch)
-    runtime.deepseek = MagicMock()
-    runtime.deepseek.configured = False
+    runtime.chat = MagicMock()
+    runtime.chat.configured = False
 
     update = make_update(text="halo")
     await ai_handlers.ai_message_handler(update, MagicMock())
@@ -152,8 +151,8 @@ async def test_ai_cancel_callback_discards(monkeypatch, db_factory):
 @pytest.mark.asyncio
 async def test_ai_photo_handler_not_configured(monkeypatch, db_factory):
     runtime = _install_runtime(monkeypatch)
-    runtime.gemini = MagicMock()
-    runtime.gemini.configured = False
+    runtime.vision = MagicMock()
+    runtime.vision.configured = False
 
     update = make_update()
     await ai_handlers.ai_photo_handler(update, MagicMock())
@@ -164,7 +163,7 @@ async def test_ai_photo_handler_not_configured(monkeypatch, db_factory):
 
 @pytest.mark.asyncio
 async def test_ai_message_handler_rejects_long_text(monkeypatch, db_factory):
-    runtime = _install_runtime(monkeypatch)
+    _install_runtime(monkeypatch)
 
     update = make_update(text="x" * 5000)
     await ai_handlers.ai_message_handler(update, MagicMock())
@@ -176,8 +175,8 @@ async def test_ai_message_handler_rejects_long_text(monkeypatch, db_factory):
 @pytest.mark.asyncio
 async def test_ai_photo_handler_rejects_large_photo(monkeypatch, db_factory):
     runtime = _install_runtime(monkeypatch)
-    runtime.gemini = MagicMock()
-    runtime.gemini.configured = True
+    runtime.vision = MagicMock()
+    runtime.vision.configured = True
 
     update = make_update()
     photo = MagicMock()
@@ -193,8 +192,8 @@ async def test_ai_photo_handler_rejects_large_photo(monkeypatch, db_factory):
 @pytest.mark.asyncio
 async def test_ai_photo_handler_rejects_oversized_download(monkeypatch, db_factory):
     runtime = _install_runtime(monkeypatch)
-    runtime.gemini = MagicMock()
-    runtime.gemini.configured = True
+    runtime.vision = MagicMock()
+    runtime.vision.configured = True
 
     update = make_update()
     photo = MagicMock()
@@ -213,8 +212,8 @@ async def test_ai_photo_handler_rejects_oversized_download(monkeypatch, db_facto
 @pytest.mark.asyncio
 async def test_ai_photo_handler_rejects_non_jpeg(monkeypatch, db_factory):
     runtime = _install_runtime(monkeypatch)
-    runtime.gemini = MagicMock()
-    runtime.gemini.configured = True
+    runtime.vision = MagicMock()
+    runtime.vision.configured = True
 
     update = make_update()
     photo = MagicMock()
@@ -394,8 +393,8 @@ async def test_ai_message_handler_provider_error_no_mutation(monkeypatch, db_fac
         async def chat(self, messages, tools=None):
             raise AIProviderError("DeepSeek API gagal: timeout")
 
-    runtime.deepseek = FailingDeepSeek()
-    runtime.orchestrator = AIOrchestrator(runtime.deepseek, runtime.pending_store)
+    runtime.chat = FailingDeepSeek()
+    runtime.orchestrator = AIOrchestrator(runtime.chat, runtime.pending_store)
 
     update = make_update(text="catat servis")
     await ai_handlers.ai_message_handler(update, MagicMock())
@@ -514,17 +513,17 @@ async def test_ai_cancel_denies_unauthorized(monkeypatch, db_factory):
 
 
 # ---------------------------------------------------------------------------
-# H7A Part B: photo handler flow (mock Gemini + isolated DB)
+# H7A Part B: photo handler flow (mock vision provider + isolated DB)
 # ---------------------------------------------------------------------------
 
 def _photo_update(monkeypatch, extract_result=None):
     runtime = _install_runtime(monkeypatch)
-    runtime.gemini = MagicMock()
-    runtime.gemini.configured = True
+    runtime.vision = MagicMock()
+    runtime.vision.configured = True
     if extract_result is None:
-        runtime.gemini.extract = AsyncMock(side_effect=AIProviderError("Gemini gagal"))
+        runtime.vision.extract = AsyncMock(side_effect=AIProviderError("OpenRouter gagal"))
     else:
-        runtime.gemini.extract = AsyncMock(return_value=extract_result)
+        runtime.vision.extract = AsyncMock(return_value=extract_result)
 
     update = make_update()
     update.message.caption = None  # no caption by default (plate from extraction)
@@ -668,8 +667,8 @@ async def test_ai_photo_handler_cancel_no_mutation(monkeypatch, db_factory):
 @pytest.mark.asyncio
 async def test_ai_photo_handler_denies_unauthorized(monkeypatch, db_factory):
     runtime = _install_runtime(monkeypatch)
-    runtime.gemini = MagicMock()
-    runtime.gemini.configured = True
+    runtime.vision = MagicMock()
+    runtime.vision.configured = True
     monkeypatch.setattr("bot.auth.is_authorized", lambda uid: False)
 
     update = make_update()
@@ -678,7 +677,7 @@ async def test_ai_photo_handler_denies_unauthorized(monkeypatch, db_factory):
 
     reply = update.message.reply_text.await_args[0][0]
     assert "tidak memiliki akses" in reply
-    runtime.gemini.extract.assert_not_called()
+    runtime.vision.extract.assert_not_called()
 
 
 @pytest.mark.asyncio

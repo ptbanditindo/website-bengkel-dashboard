@@ -2023,6 +2023,7 @@
   }
   function waCfgBadge(ok, okText, badText) { return ok ? '<span class="badge ok">' + okText + '</span>' : '<span class="badge off">' + badText + '</span>'; }
   function waSecretRow(id, key, label, status) {
+    status = status || {};
     return '<div class="form-field"><label>' + label + '</label>' +
       '<input type="password" id="' + id + '" placeholder="Kosongkan = tidak mengubah">' +
       '<div class="wa-hint">' + (status.stored ? ('Tersimpan: ' + escapeHtml(status.masked)) : 'Belum disimpan') + (status.active ? ' (aktif)' : '') + (status.needs_restart ? ' — perlu restart' : '') + '</div>' +
@@ -2057,10 +2058,30 @@
         '<button class="btn ghost sm" data-tg-test>Uji Koneksi</button>' +
         '<button class="btn danger sm" data-tg-delete>Hapus</button></div></div>' +
         '<p class="muted">Uji memakai getMe Telegram. Token tidak pernah dikirim balik ke UI.</p></section>';
-      html += '<section class="panel"><h2>AI Provider</h2><div class="form-grid">' +
-        waSecretRow("ds-key", "deepseek_api_key", "DeepSeek API Key", st.providers.deepseek) +
-        waSecretRow("gm-key", "gemini_api_key", "Gemini API Key (opsional, vision/OCR)", st.providers.gemini) +
-        '</div><p class="muted">API key tidak pernah dikirim balik ke UI; hanya status tersamarkan.</p></section>';
+      var curProvider = (st.providers.ai_provider && st.providers.ai_provider.active) || "deepseek";
+      html += '<section class="panel"><h2>AI Provider</h2>' +
+        '<div class="form-grid">' +
+          '<div class="form-field"><label>Provider Aktif</label>' +
+            '<select id="ai-provider">' +
+              '<option value="deepseek"' + (curProvider === "deepseek" ? ' selected' : '') + '>DeepSeek</option>' +
+              '<option value="openrouter"' + (curProvider === "openrouter" ? ' selected' : '') + '>OpenRouter</option>' +
+            '</select>' +
+            '<div class="wa-hint">Percakapan &amp; tool calling memakai provider ini.</div></div>' +
+        '</div>' +
+        '<div class="form-grid">' +
+          waSecretRow("ds-key", "deepseek_api_key", "DeepSeek API Key", st.providers.deepseek) +
+          waSecretRow("or-key", "openrouter_api_key", "OpenRouter API Key", st.providers.openrouter) +
+        '</div>' +
+        '<div class="form-grid">' +
+          '<div class="form-field"><label>OpenRouter Chat Model</label>' +
+            '<input type="text" id="or-chat-model" placeholder="mis. openai/gpt-4o-mini" value="' + escapeHtml((st.providers.openrouter_chat_model && st.providers.openrouter_chat_model.active) || "") + '">' +
+            '<div class="wa-hint">ID model OpenRouter untuk percakapan/tool calling. Isi model yang valid untuk akun Anda.</div></div>' +
+          '<div class="form-field"><label>OpenRouter Vision Model</label>' +
+            '<input type="text" id="or-vision-model" placeholder="mis. openai/gpt-4o-mini" value="' + escapeHtml((st.providers.openrouter_vision_model && st.providers.openrouter_vision_model.active) || "") + '">' +
+            '<div class="wa-hint">ID model OpenRouter untuk membaca foto nota.</div></div>' +
+        '</div>' +
+        '<div class="toolbar" style="margin-top:8px"><button class="btn primary sm" data-ai-config-save>Simpan Provider &amp; Model</button></div>' +
+        '<p class="muted">API key tidak pernah dikirim balik ke UI; hanya status tersamarkan. Perubahan provider/model/key memerlukan restart untuk aktif.</p></section>';
       html += '<section class="panel"><h2>Agent WhatsApp CS</h2>' +
         '<div class="form-grid">' +
         '<div class="form-field"><label>Nama Bengkel</label><input type="text" id="wa-cfg-name" value="' + escapeHtml(ag.nama_bengkel || "") + '"></div>' +
@@ -2127,12 +2148,14 @@
     if (tgTest) { var t2 = $("#tg-token").value; if (!t2) { showModal("Isi token untuk diuji.", [], "OK", false, null, true); return; } waIntegrationAction("POST", "/api/integrations/telegram/test", { token: t2 }).then(function (r) { showModal(r.valid ? ("Valid — bot: " + (r.username || r.name || "-")) : ("Tidak valid: " + (r.error || "")), [], "OK", false, null, true); }); return; }
     var tgDel = e.target.closest("[data-tg-delete]");
     if (tgDel) { waIntegrationAction("POST", "/api/integrations/telegram/delete").then(function () { renderIntegrations(); }); return; }
+    var aiConfigSave = e.target.closest("[data-ai-config-save]");
+    if (aiConfigSave) { waIntegrationAction("POST", "/api/integrations/ai/config", { ai_provider: $("#ai-provider").value, openrouter_chat_model: $("#or-chat-model").value, openrouter_vision_model: $("#or-vision-model").value }).then(function () { showModal("Tersimpan (perlu restart untuk aktif).", [], "OK", false, null, true); renderIntegrations(); }).catch(function (er) { showModal(er.message, [], "OK", false, null, true); }); return; }
     var aiSave = e.target.closest("[data-ai-save]");
-    if (aiSave) { var k = aiSave.dataset.aiSave; var id = (k === "deepseek_api_key") ? "#ds-key" : "#gm-key"; var v = $(id).value; if (!v) { showModal("Isi API key terlebih dahulu.", [], "OK", false, null, true); return; } waIntegrationAction("POST", "/api/integrations/" + (k === "deepseek_api_key" ? "deepseek" : "gemini") + "/save", { value: v }).then(function () { showModal("Tersimpan (perlu restart untuk aktif).", [], "OK", false, null, true); renderIntegrations(); }); return; }
+    if (aiSave) { var k = aiSave.dataset.aiSave; var provider = (k === "deepseek_api_key") ? "deepseek" : "openrouter"; var id = (k === "deepseek_api_key") ? "#ds-key" : "#or-key"; var v = $(id).value; if (!v) { showModal("Isi API key terlebih dahulu.", [], "OK", false, null, true); return; } waIntegrationAction("POST", "/api/integrations/" + provider + "/save", { value: v }).then(function () { showModal("Tersimpan (perlu restart untuk aktif).", [], "OK", false, null, true); renderIntegrations(); }); return; }
     var aiTest = e.target.closest("[data-ai-test]");
-    if (aiTest) { var k2 = aiTest.dataset.aiTest; var id2 = (k2 === "deepseek_api_key") ? "#ds-key" : "#gm-key"; var v2 = $(id2).value; if (!v2) { showModal("Isi API key untuk diuji.", [], "OK", false, null, true); return; } waIntegrationAction("POST", "/api/integrations/" + (k2 === "deepseek_api_key" ? "deepseek" : "gemini") + "/test", { value: v2 }).then(function (r) { showModal(r.valid ? "Koneksi valid." : ("Gagal: " + (r.error || "")), [], "OK", false, null, true); }); return; }
+    if (aiTest) { var k2 = aiTest.dataset.aiTest; var provider2 = (k2 === "deepseek_api_key") ? "deepseek" : "openrouter"; var id2 = (k2 === "deepseek_api_key") ? "#ds-key" : "#or-key"; var v2 = $(id2).value; if (!v2) { showModal("Isi API key untuk diuji.", [], "OK", false, null, true); return; } waIntegrationAction("POST", "/api/integrations/" + provider2 + "/test", { value: v2 }).then(function (r) { showModal(r.valid ? "Koneksi valid." : ("Gagal: " + (r.error || "")), [], "OK", false, null, true); }); return; }
     var aiDel = e.target.closest("[data-ai-delete]");
-    if (aiDel) { var k3 = aiDel.dataset.aiDelete; waIntegrationAction("POST", "/api/integrations/" + (k3 === "deepseek_api_key" ? "deepseek" : "gemini") + "/delete").then(function () { renderIntegrations(); }); return; }
+    if (aiDel) { var k3 = aiDel.dataset.aiDelete; var provider3 = (k3 === "deepseek_api_key") ? "deepseek" : "openrouter"; waIntegrationAction("POST", "/api/integrations/" + provider3 + "/delete").then(function () { renderIntegrations(); }); return; }
   });
 
   var waQrPollId = 0;

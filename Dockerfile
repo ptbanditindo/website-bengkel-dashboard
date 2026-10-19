@@ -14,7 +14,6 @@ COPY bot ./bot
 COPY database ./database
 COPY repositories ./repositories
 COPY services ./services
-COPY api ./api
 COPY migrations ./migrations
 COPY alembic.ini .
 COPY main.py .

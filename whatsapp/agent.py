@@ -7,9 +7,8 @@ prompt.
 
 import json
 import logging
-import time
 
-from ai.providers import DeepSeekProvider
+from ai.providers import build_chat_provider
 from services.exceptions import ServiceError
 from sqlalchemy.exc import SQLAlchemyError
 from whatsapp.services import (
@@ -237,7 +236,7 @@ def run_restricted_tool(name, args, contact, wa_session, main_session) -> str:
 
 class WhatsAppAgent:
     def __init__(self):
-        self._provider = DeepSeekProvider()
+        self._provider = build_chat_provider()
 
     async def reply(self, wa_number, text, wa_session, main_session) -> str:
         if text.strip().lower() in {"halo", "hai", "hi", "pagi", "siang", "sore", "malam"}:

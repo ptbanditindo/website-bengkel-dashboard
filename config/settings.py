@@ -1,4 +1,4 @@
-"""Secure server-side store for integration credentials.
+"""Secure server-side store for integration credentials and AI provider config.
 
 Secrets are persisted to data/integration_settings.json (private, never served
 as static). Endpoints return masked presence status only, never the full value.
@@ -16,12 +16,16 @@ SETTINGS_PATH = PROJECT_ROOT / "data" / "integration_settings.json"
 
 _lock = threading.Lock()
 
-SECRET_KEYS = ("telegram_bot_token", "deepseek_api_key", "gemini_api_key")
+SECRET_KEYS = ("telegram_bot_token", "deepseek_api_key", "openrouter_api_key")
+CONFIG_KEYS = ("ai_provider", "openrouter_chat_model", "openrouter_vision_model")
 
 _ENV_MAP = {
     "telegram_bot_token": "TELEGRAM_TOKEN",
     "deepseek_api_key": "DEEPSEEK_API_KEY",
-    "gemini_api_key": "GEMINI_API_KEY",
+    "openrouter_api_key": "OPENROUTER_API_KEY",
+    "ai_provider": "AI_PROVIDER",
+    "openrouter_chat_model": "OPENROUTER_CHAT_MODEL",
+    "openrouter_vision_model": "OPENROUTER_VISION_MODEL",
 }
 
 
@@ -74,6 +78,36 @@ def delete(key: str) -> None:
         _save(data)
 
 
+def set_config(key: str, value: str) -> None:
+    """Persist a non-secret AI config value (empty string removes the key)."""
+    if key not in CONFIG_KEYS:
+        raise ValueError("kunci konfigurasi tidak dikenal")
+    value = (value or "").strip()
+    with _lock:
+        data = _load()
+        if value:
+            data[key] = value
+        else:
+            data.pop(key, None)
+        _save(data)
+
+
+def get_config(key: str) -> str:
+    if key not in CONFIG_KEYS:
+        raise ValueError("kunci konfigurasi tidak dikenal")
+    with _lock:
+        return (_load().get(key) or "")
+
+
+def delete_config(key: str) -> None:
+    if key not in CONFIG_KEYS:
+        raise ValueError("kunci konfigurasi tidak dikenal")
+    with _lock:
+        data = _load()
+        data.pop(key, None)
+        _save(data)
+
+
 def mask(value) -> str:
     if not value:
         return ""
@@ -94,11 +128,25 @@ def provider_status(key: str) -> dict:
     }
 
 
+def config_status(key: str) -> dict:
+    stored = get_config(key)
+    env_key = _ENV_MAP[key]
+    active = os.getenv(env_key) or ""
+    return {
+        "stored": stored,
+        "active": active,
+        "needs_restart": bool(stored) and stored != active,
+    }
+
+
 def status() -> dict:
     return {
         "telegram": provider_status("telegram_bot_token"),
         "deepseek": provider_status("deepseek_api_key"),
-        "gemini": provider_status("gemini_api_key"),
+        "openrouter": provider_status("openrouter_api_key"),
+        "ai_provider": config_status("ai_provider"),
+        "openrouter_chat_model": config_status("openrouter_chat_model"),
+        "openrouter_vision_model": config_status("openrouter_vision_model"),
     }
 
 

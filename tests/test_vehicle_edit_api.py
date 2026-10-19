@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
 
 import api.app as api_app
-from database.models import ServiceRecord, Vehicle
+from database.models import ServiceRecord
 from services.service_record_service import ServiceRecordService
 from services.vehicle_service import VehicleService
 

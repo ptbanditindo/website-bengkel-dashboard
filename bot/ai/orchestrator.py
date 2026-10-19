@@ -11,9 +11,9 @@ import threading
 from dataclasses import dataclass
 from typing import Optional
 
-from ai.context import ConversationHistory
-from ai.errors import AIError, AIInvalidResponseError, AIProviderError
-from ai.tools import (
+from bot.ai.context import ConversationHistory
+from ai.errors import AIError
+from bot.ai.tools import (
     SYSTEM_PROMPT,
     TOOL_SCHEMAS,
     PendingAction,
@@ -68,7 +68,7 @@ class AIOrchestrator:
         for _ in range(MAX_TOOL_ITERATIONS):
             try:
                 response = await self._provider.chat(messages, tools=TOOL_SCHEMAS)
-            except (AIProviderError, AIInvalidResponseError) as exc:
+            except AIError as exc:
                 return OrchestratorResult(reply=f"❌ {exc}")
 
             tool_calls = response.get("tool_calls") or []

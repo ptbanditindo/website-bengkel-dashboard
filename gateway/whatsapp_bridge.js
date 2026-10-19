@@ -1,7 +1,5 @@
 /* Baileys WhatsApp gateway bridge — localhost HTTP, internal auth.
  *
- * Legacy bridge retained for reference. The app now runs Knightbot-MD/index.js.
- *
  * Serves 127.0.0.1:BAILEYS_PORT (default 9090) for the Python side
  * (whatsapp/baileys_client.py), and forwards inbound WhatsApp messages to
  * BAILEYS_INBOUND_URL (the FastAPI inbound webhook). The shared auth token is

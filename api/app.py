@@ -5,13 +5,11 @@ endpoints are exposed yet. API access is authenticated via a bearer token
 (``UI_ACCESS_TOKEN``); documentation endpoints are disabled by default.
 """
 
-import os
-import secrets
 from datetime import date, datetime, time, timedelta
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
@@ -53,6 +51,9 @@ from services.reporting import ReportingService
 from services.service_record_service import ServiceRecordService
 from services.stock_service import StockService
 from services.vehicle_service import VehicleService
+from api.auth import require_ui_access
+from api.integration_routes import int_router
+from api.whatsapp_routes import wa_gateway_router, wa_router
 
 
 @asynccontextmanager
@@ -72,35 +73,6 @@ app = FastAPI(
     redoc_url=None,
     openapi_url=None,
 )
-
-
-def _ui_token() -> str:
-    return os.getenv("UI_ACCESS_TOKEN", "")
-
-
-def require_ui_access(authorization: str | None = Header(default=None)) -> None:
-    """Reject unauthenticated requests.
-
-    Fails closed when ``UI_ACCESS_TOKEN`` is empty (protected endpoints must
-    never be reachable without a configured token). Accepts
-    ``Authorization: Bearer <token>`` and compares with a constant-time check.
-    """
-    token = _ui_token()
-    if not token:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="UI access not configured.",
-        )
-
-    presented = (authorization or "")
-    if presented.lower().startswith("bearer "):
-        presented = presented[7:].strip()
-
-    if not presented or not secrets.compare_digest(presented, token):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unauthorized.",
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -662,7 +634,7 @@ async def restore_endpoint(request: Request, _: None = Depends(require_ui_access
 # Local browser UI (H8F) — a public static shell (no data or secrets). All data
 # stays behind the authenticated /api/* endpoints above.
 # ---------------------------------------------------------------------------
-STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+STATIC_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 
 @app.get("/ui", include_in_schema=False)
@@ -672,9 +644,7 @@ def ui_index() -> FileResponse:
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-from api.whatsapp_routes import wa_router  # noqa: E402  (imported late to avoid circular import)
 app.include_router(wa_router)
-
-from api.integration_routes import int_router  # noqa: E402
+app.include_router(wa_gateway_router)
 app.include_router(int_router)
 

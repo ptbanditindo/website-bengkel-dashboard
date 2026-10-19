@@ -5,8 +5,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy.orm import sessionmaker
 
-import ai.tools as tools
-from ai.tools import (
+from bot.ai.tools import (
     MUTATION_TOOLS,
     TOOL_SCHEMAS,
     PendingConfirmation,
