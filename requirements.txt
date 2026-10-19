@@ -1,7 +1,7 @@
 python-telegram-bot[job-queue]>=20.0
 python-dotenv>=0.19.0
 
-# AI providers (DeepSeek + OpenRouter via OpenAI-compatible API)
+# AI providers (DeepSeek + OpenRouter — both via the OpenAI-compatible SDK)
 openai>=1.0
 
 # Database (local SQLite via SQLAlchemy + Alembic migrations)

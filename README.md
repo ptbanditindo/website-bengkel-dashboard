@@ -72,6 +72,15 @@ Asisten AI untuk mengelola bengkel mobil: pelanggan, kendaraan, riwayat servis, 
 | APP_PORT | Tidak | default 8000 |
 | BACKUP_DIR | Tidak | default data/backups |
 
+### Pemilihan provider AI
+
+Atur `AI_PROVIDER` untuk memilih provider percakapan & tool calling:
+
+- `AI_PROVIDER=deepseek` (default) → memakai `DEEPSEEK_MODEL`.
+- `AI_PROVIDER=openrouter` → memakai `OPENROUTER_CHAT_MODEL`; mode ini **tidak membutuhkan** `DEEPSEEK_API_KEY`.
+
+Foto nota selalu diproses OpenRouter vision (`OPENROUTER_VISION_MODEL`), terlepas dari `AI_PROVIDER`. Model OpenRouter **tidak punya nilai default** — isi ID model yang valid untuk akun Anda (contoh: `openai/gpt-4o-mini`, `anthropic/claude-3.5-sonnet`). Model chat dan vision boleh berbeda; keduanya memakai satu `OPENROUTER_API_KEY`.
+
 Perilaku saat API key kosong:
 - Provider chat terpilih kosong -> AI percakapan memberi tahu belum dikonfigurasi; perintah manual (/daftar, /servis, dll.) tetap berfungsi.
 - `OPENROUTER_API_KEY` kosong -> pemrosesan foto memberi tahu fitur belum tersedia; percakapan teks tetap berfungsi.
