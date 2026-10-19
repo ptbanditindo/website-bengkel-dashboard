@@ -66,6 +66,7 @@ class WaMessage(WhatsAppBase):
     sender: Mapped[str] = mapped_column(String(16), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     gateway_message_id: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True)
+    send_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow)
 
 

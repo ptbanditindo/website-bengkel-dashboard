@@ -10,6 +10,8 @@ import logging
 import time
 
 from ai.providers import DeepSeekProvider
+from services.exceptions import ServiceError
+from sqlalchemy.exc import SQLAlchemyError
 from whatsapp.services import (
     ArrivalService,
     ContactService,
@@ -23,13 +25,33 @@ logger = logging.getLogger(__name__)
 
 NL = chr(10)
 
+# Safe fallbacks for main-database read failures. Must never fabricate data,
+# never escalate, and never write/delete anything on the main database.
+DB_UNAVAILABLE_REPLY = "Maaf, data kendaraan atau riwayat servis belum dapat diperiksa saat ini. Silakan coba lagi nanti."
+DB_UNAVAILABLE_TOOL = "GAGAL_MEMBACA_DATABASE: data tidak dapat dibaca saat ini (kesalahan sistem, bukan hasil pencarian kosong)."
+
+
+def _rollback_safe(session) -> None:
+    """Roll back a session after a failed read. Cleanup only — never raises."""
+    try:
+        session.rollback()
+    except Exception:  # noqa: BLE001 — cleanup must not mask the original failure
+        pass
+
+
 WA_SECURITY_RULES = """ATURAN KEAMANAN (wajib, tidak bisa dinonaktifkan):
 - Kamu adalah customer service bengkel via WhatsApp.
 - Hanya gunakan tool yang disediakan. JANGAN mengarang harga, stok, jam operasional, riwayat servis, atau status kendaraan.
+- Saat pelanggan bertanya harga jasa/part, WAJIB panggil tool get_jasa_price / get_part_price dan jawab pakai angka dari tool.
+- JAWAB hanya berdasarkan hasil tool (data stok/harga asli). JANGAN mengarang padanan/alias barang (mis. menganggap "uppertank" = "tutup radiator").
+- Jika nama barang tidak ditemukan di stok (tool bilang "tidak terdaftar"), tampilkan saja daftar barang yang tersedia dari hasil tool; JANGAN memilih sembarang barang sebagai padanan.
+- Jika pertanyaan harga ambigu/terlalu umum (mis. "service radiator"), tetap panggil tool lalu tampilkan daftar pilihan yang cocok beserta harganya; jangan langsung eskalasi.
+- Jika pertanyaan berisi beberapa hal dan sebagian tidak ada di data, JAWAB dulu bagian yang bisa dijawab (mis. harga jasa), lalu jelaskan item yang tidak tersedia dan minta info tambahan; JANGAN eskalasi seluruh pertanyaan hanya karena satu item tidak ditemukan.
 - JANGAN mengungkap jumlah stok, harga modal/beli, keuntungan/margin, laporan keuangan, atau data pelanggan lain.
 - Estimasi harga selalu perkiraan dan bukan harga final; arahkan pelanggan datang untuk pemeriksaan.
 - Rencana kedatangan hanyalah rencana, bukan bukti pelanggan benar-benar datang.
-- Jika tidak tahu, data tidak tersedia, konflik, atau pelanggan minta manusia, gunakan tool eskalasi ke owner.
+- Gunakan tool escalate_to_owner HANYA jika pelanggan secara eksplisit minta bicara manusia, ATAU tidak ada satu pun bagian pertanyaan yang bisa dijawab dari tool. Jika ada bagian yang bisa dijawab (mis. harga jasa ketemu, part tidak), jawab bagian itu dan minta klarifikasi untuk sisanya — JANGAN eskalasi.
+- Jika pelanggan tampak frustasi atau gagal identifikasi (nama/plat tidak cocok berulang kali), tawarkan/gunakan tool escalate_to_owner.
 - Jangan mengaku bisa mengubah data servis, stok, atau transaksi.
 """
 
@@ -71,6 +93,10 @@ def _int_prop(desc):
 
 TOOL_SCHEMAS = [
     _schema("lookup_customer", "Cocokkan nomor WhatsApp dengan kendaraan terdaftar milik pelanggan.", {}, []),
+    _schema("lookup_by_plate", "Identifikasi pelanggan lewat plat + nama (keduanya wajib cocok).", {
+        "nopol": _str_prop("Plat nomor kendaraan"),
+        "nama": _str_prop("Nama pemilik yang diketik pelanggan"),
+    }, ["nopol", "nama"]),
     _schema("get_service_history", "Riwayat servis kendaraan milik pelanggan (tanpa data keuangan).", {"vehicle_id": _int_prop("ID kendaraan")}, ["vehicle_id"]),
     _schema("check_stock", "Cek apakah suatu part tersedia (tanpa jumlah stok).", {"nama_part": _str_prop("Nama part")}, ["nama_part"]),
     _schema("get_part_price", "Harga jual suatu part.", {"nama_part": _str_prop("Nama part")}, ["nama_part"]),
@@ -94,31 +120,100 @@ TOOL_SCHEMAS = [
 
 def run_restricted_tool(name, args, contact, wa_session, main_session) -> str:
     if name == "lookup_customer":
-        matches = MatchingService(main_session).match_by_wa_number(contact.wa_number)
+        try:
+            matches = MatchingService(main_session).match_by_wa_number(contact.wa_number)
+            if not matches and contact.linked_vehicle_id:
+                v = MatchingService(main_session).get_vehicle(contact.linked_vehicle_id)
+                if v is not None:
+                    matches = [v]
+        except SQLAlchemyError as e:
+            _rollback_safe(main_session)
+            logger.error("[debug-deepseek] db_unavailable tool=lookup_customer error=%s", e)
+            return DB_UNAVAILABLE_TOOL
         if not matches:
             return "Belum ada kendaraan terdaftar untuk nomor ini."
         return NL.join([
             "Kendaraan id=%s, plat=%s, nama=%s, jenis=%s, tahun=%s" % (v.id, v.nopol, v.nama_client or "-", v.jenis_mobil or "-", v.tahun_mobil or "-")
             for v in matches
         ])
-    if name == "get_service_history":
+    if name == "lookup_by_plate":
         try:
-            history = MatchingService(main_session).service_history(int(args.get("vehicle_id")), contact.wa_number)
-        except Exception as e:
-            return "Tidak dapat membaca riwayat: " + str(e)
+            vehicle = MatchingService(main_session).match_by_plate(str(args.get("nopol", "")))
+        except SQLAlchemyError as e:
+            _rollback_safe(main_session)
+            logger.error("[debug-deepseek] db_unavailable tool=lookup_by_plate error=%s", e)
+            return DB_UNAVAILABLE_TOOL
+        if vehicle is None:
+            return "Plat tidak ditemukan di database."
+        if not MatchingService._names_match(str(args.get("nama", "")), vehicle.nama_client or ""):
+            return "Nama tidak cocok dengan plat tersebut."
+        ContactService(wa_session).update_memory(
+            contact.id,
+            linked_vehicle_id=vehicle.id,
+            linked_vehicle_nopol=vehicle.nopol,
+            nama=vehicle.nama_client,
+            plat=vehicle.nopol,
+            jenis_mobil=vehicle.jenis_mobil,
+            tahun_mobil=vehicle.tahun_mobil,
+        )
+        wa_session.commit()
+        return "Kendaraan terverifikasi: plat=%s, nama=%s, jenis=%s, tahun=%s (id=%s)" % (
+            vehicle.nopol, vehicle.nama_client or "-", vehicle.jenis_mobil or "-", vehicle.tahun_mobil or "-", vehicle.id,
+        )
+    if name == "get_service_history":
+        vehicle_id = args.get("vehicle_id")
+        try:
+            vehicle_id = int(vehicle_id)
+        except (TypeError, ValueError):
+            return "ID kendaraan tidak valid."
+        try:
+            authorized = (contact.linked_vehicle_id == vehicle_id)
+            history = MatchingService(main_session).service_history(vehicle_id, contact.wa_number, authorized=authorized)
+        except SQLAlchemyError as e:
+            _rollback_safe(main_session)
+            logger.error("[debug-deepseek] db_unavailable tool=get_service_history error=%s", e)
+            return DB_UNAVAILABLE_TOOL
+        except ServiceError as e:
+            return str(e)
         if not history:
             return "Belum ada riwayat servis."
         return NL.join([
-            "- %s: pekerjaan=%s; part=%s; catatan=%s" % (h["waktu"], ", ".join(h["pekerjaan"]) or "-", ", ".join(h["part"]) or "-", h["catatan"] or "-")
+            "- %s: pekerjaan=%s; part=%s; catatan=%s; garansi_sampai=%s; status_klaim=%s" % (
+                h["waktu"],
+                ", ".join(h["pekerjaan"]) or "-",
+                ", ".join(h["part"]) or "-",
+                h["catatan"] or "-",
+                h.get("garansi_sampai") or "tidak ada",
+                h.get("status_klaim") or "-",
+            )
             for h in history
         ])
     if name == "check_stock":
-        return PriceService(main_session).check_stock(str(args.get("nama_part", "")))
+        try:
+            return PriceService(main_session).check_stock(str(args.get("nama_part", "")))
+        except SQLAlchemyError as e:
+            _rollback_safe(main_session)
+            logger.error("[debug-deepseek] db_unavailable tool=check_stock error=%s", e)
+            return DB_UNAVAILABLE_TOOL
     if name == "get_part_price":
-        price = PriceService(main_session).part_price(str(args.get("nama_part", "")))
+        try:
+            price = PriceService(main_session).part_price(str(args.get("nama_part", "")))
+        except SQLAlchemyError as e:
+            _rollback_safe(main_session)
+            logger.error("[debug-deepseek] db_unavailable tool=get_part_price error=%s", e)
+            return DB_UNAVAILABLE_TOOL
+        if isinstance(price, str):
+            return price
         return ("Harga jual part sekitar Rp%s (perkiraan, bisa berubah)." % ("{0:,.0f}".format(price).replace(",", "."))) if price is not None else "Harga part tidak diketahui."
     if name == "get_jasa_price":
-        price = PriceService(main_session).jasa_price(str(args.get("nama_jasa", "")))
+        try:
+            price = PriceService(main_session).jasa_price(str(args.get("nama_jasa", "")))
+        except SQLAlchemyError as e:
+            _rollback_safe(main_session)
+            logger.error("[debug-deepseek] db_unavailable tool=get_jasa_price error=%s", e)
+            return DB_UNAVAILABLE_TOOL
+        if isinstance(price, str):
+            return price
         return ("Harga jasa sekitar Rp%s (perkiraan, bisa berubah)." % ("{0:,.0f}".format(price).replace(",", "."))) if price is not None else "Harga jasa tidak diketahui."
     if name == "save_memory":
         fields = {k: v for k, v in args.items() if v is not None and k in ("nama", "plat", "jenis_mobil", "tahun_mobil", "issue_summary")}
@@ -153,7 +248,12 @@ class WhatsAppAgent:
         wa_session.commit()
         settings = SettingsService(wa_session).get()
         system = build_system_prompt(settings)
-        context = self._context(contact, main_session)
+        try:
+            context = self._context(contact, main_session)
+        except SQLAlchemyError as e:
+            _rollback_safe(main_session)
+            logger.error("[debug-deepseek] db_unavailable stage=context error=%s", e)
+            return DB_UNAVAILABLE_REPLY
         messages = [
             {"role": "system", "content": system},
             {"role": "user", "content": "KONTEKS KONTAK:" + NL + context + NL + NL + "PESAN PELANGGAN:" + NL + text},
@@ -162,7 +262,7 @@ class WhatsAppAgent:
             logger.error("[debug-deepseek] skipped configured=false")
             return self._escalate(contact, wa_session, "AI tidak dikonfigurasi.")
         logger.info("[debug-deepseek] agent_start contact=%s text_length=%d", wa_number, len(text))
-        for iteration in range(2):
+        for iteration in range(3):
             try:
                 resp = await self._provider.chat(messages, tools=TOOL_SCHEMAS)
             except Exception as e:
@@ -182,11 +282,20 @@ class WhatsAppAgent:
                 except json.JSONDecodeError:
                     args = {}
                 result = run_restricted_tool(tc["function"]["name"], args, contact, wa_session, main_session)
+                if result == DB_UNAVAILABLE_TOOL:
+                    _rollback_safe(main_session)
+                    return DB_UNAVAILABLE_REPLY
                 messages.append({"role": "tool", "tool_call_id": tc["id"], "content": result})
+                if tc["function"]["name"] == "escalate_to_owner":
+                    return "Maaf, saya belum bisa menjawab pertanyaan ini. Pertanyaan Anda akan diteruskan ke pemilik bengkel."
         return self._escalate(contact, wa_session, "AI tidak dapat menyelesaikan permintaan.")
 
     def _context(self, contact, main_session) -> str:
         matches = MatchingService(main_session).match_by_wa_number(contact.wa_number)
+        if not matches and contact.linked_vehicle_id:
+            v = MatchingService(main_session).get_vehicle(contact.linked_vehicle_id)
+            if v is not None:
+                matches = [v]
         lines = [
             "Nomor WhatsApp: " + contact.wa_number,
             "Nama: " + (contact.nama or "belum diketahui"),

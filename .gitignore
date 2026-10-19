@@ -64,6 +64,7 @@ desktop.ini
 .pytest_cache/
 .coverage
 htmlcov/
+artifacts/
 
 # Backup files
 *.bak
@@ -82,12 +83,11 @@ data/*.db-wal
 data/*.db-shm
 data/*.sqlite
 !data/.gitkeep
-!data/workshop.db
-!data/whatsapp_cs.db
 # Baileys gateway (Node.js) + integration secrets
 gateway/node_modules/
 data/baileys_session/
 data/integration_settings.json
+data/jid_map.json
 
 # Legacy test-gateway artifacts (gateway-test/ removed)
 data/test_baileys_session/

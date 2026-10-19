@@ -1,19 +1,23 @@
 """Integration settings endpoints: WhatsApp (Baileys), Telegram, AI providers."""
 
+import asyncio
 import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from api.app import require_ui_access
-from database.session import get_db
-from sqlalchemy.orm import Session
 from config import settings as settings_store
 from config import testing as testing_mod
+from database.session import get_db
 from whatsapp import baileys_client
 from whatsapp.agent import WhatsAppAgent
 from whatsapp.db import get_whatsapp_db
 from whatsapp.normalize import normalize_wa_number
-from whatsapp.services import ContactService
+from whatsapp.services import ContactService, send_status_of
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +123,14 @@ def whatsapp_logout(_: None = Depends(require_ui_access)):
 
 
 # ---- Inbound webhook from the Baileys bridge (internal auth) ----
+WA_REPLY_DELAY_SECONDS = 5
+
+
+def _reply_delay() -> int:
+    """Effective reply delay in seconds (fixed at 5s; see WA-DELAY-05)."""
+    return max(0, min(WA_REPLY_DELAY_SECONDS, 120))
+
+
 @int_router.post("/whatsapp/inbound")
 async def whatsapp_inbound(payload: dict, request: Request, wdb=Depends(get_whatsapp_db), db: Session = Depends(get_db)):
     auth = request.headers.get("authorization", "")
@@ -130,30 +142,64 @@ async def whatsapp_inbound(payload: dict, request: Request, wdb=Depends(get_what
     if not wa_number or not text:
         logger.warning("[debug-deepseek] inbound_rejected has_number=%s text_length=%d", bool(wa_number), len(text))
         return {"processed": False}
+    from_me = bool(payload.get("from_me"))
+    if from_me:
+        # Owner replied manually from the bot's own WhatsApp number.
+        try:
+            contact = ContactService(wdb).get_or_create(wa_number)
+            ContactService(wdb).record_message(contact.id, "owner", text, gateway_message_id=message_id)
+            ContactService(wdb).set_takeover(contact.id)
+            wdb.commit()
+        except SQLAlchemyError as e:
+            try:
+                wdb.rollback()
+            except Exception:  # noqa: BLE001 — cleanup only
+                pass
+            logger.error("[debug-deepseek] whatsapp_db_unavailable from_me error=%s", e)
+            return JSONResponse(status_code=503, content={"processed": False, "error": "database_unavailable"})
+        logger.info("[debug-deepseek] owner_takeover_set number=%s", wa_number)
+        return {"processed": True, "owner_takeover": True}
     logger.info("[debug-deepseek] inbound_received number=%s message_id=%s text_length=%d", wa_number, message_id, len(text))
-    contact = ContactService(wdb).get_or_create(wa_number)
-    created, _ = ContactService(wdb).record_message(contact.id, "customer", text, gateway_message_id=message_id)
-    if not created:
-        return {"processed": False, "duplicate": True}
-    takeover_active = ContactService(wdb).is_taken_over(contact.id)
-    logger.info(
-        "[debug-deepseek] takeover_check contact_id=%s number=%s owner_takeover_on=%s active=%s",
-        contact.id,
-        wa_number,
-        contact.owner_takeover_on,
-        takeover_active,
-    )
-    if takeover_active:
+    try:
+        contact = ContactService(wdb).get_or_create(wa_number)
+        created, _ = ContactService(wdb).record_message(contact.id, "customer", text, gateway_message_id=message_id)
+        if not created:
+            return {"processed": False, "duplicate": True}
+        takeover_active = ContactService(wdb).is_taken_over(contact.id)
+        logger.info(
+            "[debug-deepseek] takeover_check contact_id=%s number=%s owner_takeover_on=%s active=%s",
+            contact.id,
+            wa_number,
+            contact.owner_takeover_on,
+            takeover_active,
+        )
+        if takeover_active:
+            wdb.commit()
+            return {"processed": True, "ai_skipped": True, "reason": "owner_takeover"}
+        agent = WhatsAppAgent()
+        reply = await agent.reply(wa_number, text, wdb, db)
+        logger.info("[debug-deepseek] reply_ready number=%s reply_length=%d", wa_number, len(reply or ""))
+        _, ai_msg = ContactService(wdb).record_message(contact.id, "ai", reply)
         wdb.commit()
-        return {"processed": True, "ai_skipped": True, "reason": "owner_takeover"}
-    agent = WhatsAppAgent()
-    reply = await agent.reply(wa_number, text, wdb, db)
-    logger.info("[debug-deepseek] reply_ready number=%s reply_length=%d", wa_number, len(reply or ""))
-    ContactService(wdb).record_message(contact.id, "ai", reply)
-    wdb.commit()
-    st = baileys_client.status()
-    send_result = {"sent": False, "error": "bridge_not_connected"}
-    if st.get("status") == "connected":
-        send_result = baileys_client.send_message(wa_number, reply)
-    logger.info("[debug-deepseek] outbound_result number=%s bridge_status=%s sent=%s error=%s", wa_number, st.get("status"), bool(send_result.get("sent")), send_result.get("error"))
-    return {"processed": True, "reply_sent": bool(send_result.get("sent"))}
+        st = baileys_client.status()
+        send_result = {"sent": False, "error": "bridge_not_connected"}
+        if st.get("status") == "connected":
+            delay = _reply_delay()
+            if delay > 0:
+                await asyncio.sleep(delay)
+            send_result = baileys_client.send_message(wa_number, reply)
+        status = send_status_of(send_result)
+        ContactService(wdb).mark_send_status(ai_msg.id, status)
+        wdb.commit()
+        logger.info(
+            "[debug-deepseek] outbound_result number=%s bridge_status=%s sent=%s status=%s error=%s",
+            wa_number, st.get("status"), bool(send_result.get("sent")), status, send_result.get("error"),
+        )
+        return {"processed": True, "reply_sent": bool(send_result.get("sent")), "send_status": status}
+    except SQLAlchemyError as e:
+        try:
+            wdb.rollback()
+        except Exception:  # noqa: BLE001 — cleanup only, never mask the failure
+            pass
+        logger.error("[debug-deepseek] whatsapp_db_unavailable error=%s", e)
+        return JSONResponse(status_code=503, content={"processed": False, "error": "database_unavailable"})

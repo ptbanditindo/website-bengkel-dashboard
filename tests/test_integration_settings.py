@@ -146,3 +146,69 @@ def test_conversation_isolation_via_services(wa_session):
     s.commit()
     assert ContactService(s).get_or_create("0812-1").nama == "A"
     assert ContactService(s).get_or_create("0812-2").nama == "B"
+
+
+def test_inbound_whatsapp_db_unavailable_fail_closed(env, monkeypatch):
+    from sqlalchemy.exc import OperationalError
+    from whatsapp.services import ContactService
+
+    def boom(*a, **k):
+        raise OperationalError("SELECT ...", None, None)
+    monkeypatch.setattr(ContactService, "get_or_create", boom)
+
+    payload = {"from": "0812-1", "message_id": "gw-db-fail-1", "text": "halo"}
+    hdr = {"Authorization": "Bearer " + settings_store.get_internal_token()}
+    r = env.post("/api/integrations/whatsapp/inbound", json=payload, headers=hdr)
+    assert r.status_code == 503
+    body = r.json()
+    assert body["processed"] is False
+    assert body["error"] == "database_unavailable"
+
+
+def test_reply_delay_is_5_seconds():
+    from api.integration_routes import WA_REPLY_DELAY_SECONDS, _reply_delay
+
+    assert WA_REPLY_DELAY_SECONDS == 5
+    assert _reply_delay() == 5
+
+
+def test_inbound_applies_delay_once(env, monkeypatch):
+    import types
+
+    import api.integration_routes as ir
+    import whatsapp.baileys_client as bc
+
+    class FakeAgent:
+        async def reply(self, wa_number, text, wdb, main):
+            return "balasan demo"
+
+    monkeypatch.setattr(ir, "WhatsAppAgent", lambda: FakeAgent())
+    monkeypatch.setattr(bc, "status", lambda: {"status": "connected"})
+    monkeypatch.setattr(bc, "send_message", lambda to, text: {"sent": True})
+
+    sleeps = []
+
+    async def fake_sleep(seconds, result=None):
+        sleeps.append(seconds)
+
+    monkeypatch.setattr(ir, "asyncio", types.SimpleNamespace(sleep=fake_sleep))
+
+    payload = {"from": "0812-1", "message_id": "gw-delay-1", "text": "halo"}
+    hdr = {"Authorization": "Bearer " + settings_store.get_internal_token()}
+    r = env.post("/api/integrations/whatsapp/inbound", json=payload, headers=hdr)
+    assert r.status_code == 200
+    assert r.json()["reply_sent"] is True
+    assert sleeps == [5]
+
+
+def test_inbound_from_me_sets_takeover(env):
+    payload = {"from": "0812-1", "from_me": True, "message_id": "owner-reply-1", "text": "Halo, ini owner bengkel"}
+    hdr = {"Authorization": "Bearer " + settings_store.get_internal_token()}
+    r = env.post("/api/integrations/whatsapp/inbound", json=payload, headers=hdr)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["processed"] is True
+    assert body["owner_takeover"] is True
+
+
+

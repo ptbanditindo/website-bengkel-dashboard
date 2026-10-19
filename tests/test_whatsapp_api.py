@@ -77,11 +77,22 @@ def test_settings_get_and_update(wa_env):
     assert r2.json()["default_delay_seconds"] == 90
 
 
-def test_gateway_status_honest(wa_env):
+def test_gateway_status_honest(wa_env, monkeypatch):
+    import whatsapp.baileys_client as bc
     client, _ = wa_env
+    monkeypatch.setattr(bc, "status", lambda: {"status": "disconnected", "provider": "baileys", "authedNumber": "", "error": ""})
     r = client.get("/api/wa/gateway/status", headers=AUTH)
     assert r.status_code == 200
     assert r.json()["connected"] is False
+
+
+def test_gateway_status_connected(wa_env, monkeypatch):
+    import whatsapp.baileys_client as bc
+    client, _ = wa_env
+    monkeypatch.setattr(bc, "status", lambda: {"status": "connected", "provider": "baileys", "authedNumber": "62812", "error": ""})
+    r = client.get("/api/wa/gateway/status", headers=AUTH)
+    assert r.status_code == 200
+    assert r.json()["connected"] is True
 
 
 def test_contacts_empty(wa_env):

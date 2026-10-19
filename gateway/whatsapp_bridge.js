@@ -55,6 +55,31 @@ let currentError = ""
 let pairingMode = false
 let authedNumber = ""
 
+// Number -> full JID mapping (e.g. "69904887738555" -> "69904887738555@lid").
+// Needed because privacy-protected senders arrive as @lid JIDs whose suffix
+// would be lost by jidToNumber(); replying must reuse the exact same JID.
+const JID_MAP_PATH = path.join(PROJECT_ROOT, "data", "jid_map.json")
+
+function loadJidMap() {
+  try {
+    return new Map(Object.entries(JSON.parse(fs.readFileSync(JID_MAP_PATH, "utf8"))))
+  } catch {
+    return new Map()
+  }
+}
+
+function saveJidMap() {
+  try {
+    fs.writeFileSync(JID_MAP_PATH, JSON.stringify(Object.fromEntries(jidByNumber)))
+  } catch {}
+}
+
+const jidByNumber = loadJidMap()
+
+// IDs of messages this gateway itself sent via /send. Used to distinguish the
+// AI's own replies from the owner's manual replies on the same WhatsApp number.
+const sentMessageIds = new Set()
+
 function jidToNumber(jid) {
   return String(jid || "").split("@")[0].split(":")[0]
 }
@@ -92,11 +117,16 @@ function extractText(m) {
 async function forwardIncoming(m) {
   try {
     const jid = m && m.key && m.key.remoteJid
+    console.log("[gateway] upsert jid=", jid, "fromMe=", m && m.key && m.key.fromMe, "type=", Object.keys((m && m.message) || {}))
     if (!jid || m.key.fromMe) return
     if (jid.endsWith("@g.us") || jid === "status@broadcast" || jid.endsWith("@newsletter")) return
     const text = extractText(m)
     if (!text) return
-    const payload = { from: jidToNumber(jid), message_id: m.key.id || "", text }
+    const number = jidToNumber(jid)
+    jidByNumber.set(number, jid)
+    saveJidMap()
+    console.log("[gateway] forwarding to API from=", number, "jid=", jid, "text_len=", text.length)
+    const payload = { from: number, message_id: m.key.id || "", text }
     const resp = await fetch(INBOUND_URL, {
       method: "POST",
       headers: {
@@ -108,6 +138,35 @@ async function forwardIncoming(m) {
     if (!resp.ok) console.error("[gateway] inbound HTTP " + resp.status)
   } catch (err) {
     console.error("[gateway] inbound error:", err)
+  }
+}
+
+async function forwardOwnerReply(m) {
+  try {
+    const jid = m && m.key && m.key.remoteJid
+    if (!jid) return
+    if (jid.endsWith("@g.us") || jid === "status@broadcast" || jid.endsWith("@newsletter")) return
+    const id = (m.key && m.key.id) || ""
+    if (sentMessageIds.has(id)) {
+      sentMessageIds.delete(id)  // this was the AI's own reply
+      return
+    }
+    const text = extractText(m)
+    if (!text) return
+    const number = jidToNumber(jid)
+    console.log("[gateway] owner reply to=", number, "jid=", jid, "text_len=", text.length)
+    const payload = { from: number, from_me: true, message_id: id, text }
+    const resp = await fetch(INBOUND_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + readInternalToken(),
+      },
+      body: JSON.stringify(payload),
+    })
+    if (!resp.ok) console.error("[gateway] owner-reply HTTP " + resp.status)
+  } catch (err) {
+    console.error("[gateway] owner-reply error:", err)
   }
 }
 
@@ -193,8 +252,12 @@ async function start() {
   })
 
   sock.ev.on("messages.upsert", ({ type, messages }) => {
+    console.log("[gateway] messages.upsert type=", type, "count=", (messages || []).length)
     if (type !== "notify") return
-    for (const m of messages) forwardIncoming(m)
+    for (const m of messages) {
+      if (m.key && m.key.fromMe) forwardOwnerReply(m)
+      else forwardIncoming(m)
+    }
   })
 }
 
@@ -284,9 +347,14 @@ const server = http.createServer(async (req, res) => {
       if (!sock || currentStatus !== "connected") {
         return sendJson(res, 503, { sent: false, error: "not connected" })
       }
-      const jid = to.includes("@") ? to : to + "@s.whatsapp.net"
+      const jid = to.includes("@") ? to : (jidByNumber.get(to) || (to + "@s.whatsapp.net"))
+      console.log("[gateway] send to=", to, "resolvedJid=", jid)
       try {
-        await sock.sendMessage(jid, { text })
+        const sentMsg = await sock.sendMessage(jid, { text })
+        if (sentMsg && sentMsg.key && sentMsg.key.id) {
+          sentMessageIds.add(sentMsg.key.id)
+          while (sentMessageIds.size > 500) sentMessageIds.delete(sentMessageIds.values().next().value)
+        }
         return sendJson(res, 200, { sent: true })
       } catch (err) {
         return sendJson(res, 200, { sent: false, error: String((err && err.message) || err) })

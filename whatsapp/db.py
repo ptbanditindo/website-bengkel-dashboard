@@ -55,6 +55,11 @@ def _migrate_columns() -> None:
     if "owner_takeover_on" not in cols:
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE wa_contacts ADD COLUMN owner_takeover_on DATE"))
+    if "wa_messages" in insp.get_table_names():
+        msg_cols = {c["name"] for c in insp.get_columns("wa_messages")}
+        if "send_status" not in msg_cols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE wa_messages ADD COLUMN send_status VARCHAR(16)"))
 
 
 def init_whatsapp_db() -> None:

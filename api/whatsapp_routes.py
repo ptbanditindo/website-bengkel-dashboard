@@ -16,6 +16,7 @@ from whatsapp.services import (
     ContactService,
     QuestionService,
     SettingsService,
+    send_status_of,
 )
 
 wa_router = APIRouter(prefix="/api/wa", tags=["whatsapp"])
@@ -179,7 +180,7 @@ def reply_contact(contact_id: int, body: ReplyBody, wdb: Session = Depends(get_w
     try:
         cs = ContactService(wdb)
         contact = cs.get(contact_id)
-        cs.record_message(contact.id, "owner", text)
+        _, owner_msg = cs.record_message(contact.id, "owner", text)
         QuestionService(wdb).answer_pending_for_contact(contact.id, text)
         cs.set_takeover(contact.id)
         wdb.commit()
@@ -187,7 +188,10 @@ def reply_contact(contact_id: int, body: ReplyBody, wdb: Session = Depends(get_w
         st = baileys_client.status()
         if st.get("status") == "connected":
             send_result = baileys_client.send_message(contact.wa_number, text)
-        return {"sent": bool(send_result.get("sent")), "error": send_result.get("error"), "owner_takeover": True}
+        status = send_status_of(send_result)
+        cs.mark_send_status(owner_msg.id, status)
+        wdb.commit()
+        return {"sent": bool(send_result.get("sent")), "error": send_result.get("error"), "owner_takeover": True, "send_status": status}
     except ServiceError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
