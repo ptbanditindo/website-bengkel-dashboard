@@ -88,6 +88,19 @@ Perilaku saat API key kosong:
 
 Jangan menaruh API key di source code atau commit `.env`. Kredensial integrasi (Telegram/DeepSeek/OpenRouter) dan konfigurasi provider juga bisa dikelola dari dashboard (menu Integrasi) dan disimpan di `data/integration_settings.json` (di-gitignore, tidak pernah disajikan sebagai file statis). Perubahan memerlukan restart untuk aktif.
 
+## WhatsApp CS: perilaku AI
+
+- **Prioritas permintaan terbaru**: AI memproses pesan terbaru lebih dulu; kebutuhan lama hanya dikonfirmasi satu kali dan tidak dianggap disetujui.
+- **Estimasi harga**: memeriksa harga jasa dan harga part/bahan terkait (mis. ganti oli mesin memanggil `get_jasa_price` + `get_part_price("oli mesin")`); tidak mengarang harga, stok, atau kuantitas.
+- **Part tidak terverifikasi** (mis. "Uppertank"): tidak disamakan dengan part lain dan tidak dikarang; dijelaskan lalu dieskalasi ke owner.
+- **Simpan aman**: status/rencana hanya diklaim tersimpan setelah commit berhasil; kegagalan simpan tidak dilaporkan sebagai sukses.
+- **Sapaan**: memakai nama bengkel dari dashboard (fallback "Dava Radiator").
+- **Delay 5 detik** per balasan, dedup `message_id`, dan isolasi konteks antar nomor.
+
+### Token usage
+
+Provider chat (DeepSeek & OpenRouter) mengembalikan metadata `usage` per respons (`prompt_tokens`, `completion_tokens`, `total_tokens`, `provider`, `model`) bila tersedia; field yang tidak ada di-set `null`. Usage dicatat per respons API (tidak diagregasi otomatis) dan tidak pernah dikirim ke pelanggan.
+
 ## Database
 
 Alembic adalah mekanisme resmi perubahan skema. Saat aplikasi berjalan, `init_db()` menjalankan migrasi Alembic (`alembic upgrade head`) secara otomatis dan non-destruktif (tidak drop/reset).
@@ -139,7 +152,7 @@ Selain perintah, cukup ketik kalimat biasa (mis. catat servis mobil B 1234 ABC g
 
 ## Catatan
 
-- Pengujian terhadap API DeepSeek/OpenRouter nyata belum dilakukan (semua tes memakai mock). Tes integrasi nyata memerlukan persetujuan terpisah.
+- Suite tes otomatis memakai mock (tanpa panggilan API berbayar). Pengujian AI nyata DeepSeek pernah dilakukan secara terkontrol (database sementara, 9 panggilan) untuk memverifikasi perilaku WhatsApp CS.
 - Konfirmasi AI bersifat sementara (in-memory) dan batal saat restart; token terikat pada user dan kedaluwarsa otomatis.
 
 ## License
