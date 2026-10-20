@@ -75,6 +75,17 @@ WA_SECURITY_RULES = """ATURAN KEAMANAN (wajib, tidak bisa dinonaktifkan):
 """
 
 
+WA_FORMAT_RULES = """ATURAN FORMAT JAWABAN (WhatsApp):
+- Gunakan bahasa Indonesia yang natural, sopan, dan ramah, seperti chat WhatsApp biasa.
+- JANGAN gunakan garis pemisah atau dekorasi seperti ---, ___, ***, atau simbol garis lainnya.
+- Jangan memakai format laporan, artikel, tabel, atau dokumen formal.
+- Gunakan paragraf pendek. Emoji boleh dipakai secukupnya.
+- Informasi penting boleh ditebalkan dengan SATU pasang tanda bintang (*...*) jika didukung WhatsApp.
+- Jangan membuat terlalu banyak baris kosong.
+- Pertahankan isi jawaban: harga, informasi layanan, pertanyaan lanjutan, dan semua aturan keselamatan.
+"""
+
+
 def build_system_prompt(settings) -> str:
     lines = [
         "Kamu adalah CS bengkel: " + _shop_name(settings) + ".",
@@ -88,6 +99,7 @@ def build_system_prompt(settings) -> str:
         lines.append(settings.agent_prompt)
         lines.append("")
     lines.append(WA_SECURITY_RULES)
+    lines.append(WA_FORMAT_RULES)
     return NL.join(lines)
 
 
@@ -283,7 +295,7 @@ class WhatsAppAgent:
         wa_session.commit()
         system = build_system_prompt(settings)
         try:
-            context = self._context(contact, main_session, wa_session)
+            context = self._context(contact, main_session, wa_session, text)
         except SQLAlchemyError as e:
             _rollback_safe(main_session)
             logger.error("[debug-deepseek] db_unavailable stage=context error=%s", e)
@@ -327,7 +339,7 @@ class WhatsAppAgent:
                     return "Maaf, saya belum bisa menjawab pertanyaan ini. Pertanyaan Anda akan diteruskan ke pemilik bengkel."
         return self._escalate(contact, wa_session, "AI tidak dapat menyelesaikan permintaan.")
 
-    def _context(self, contact, main_session, wa_session=None) -> str:
+    def _context(self, contact, main_session, wa_session=None, text=None) -> str:
         matches = MatchingService(main_session).match_by_wa_number(contact.wa_number)
         if not matches and contact.linked_vehicle_id:
             v = MatchingService(main_session).get_vehicle(contact.linked_vehicle_id)
@@ -345,8 +357,18 @@ class WhatsAppAgent:
         if wa_session is not None:
             history = ContactService(wa_session).recent_messages(contact.id, limit=12)
             if history:
+                current_text = (text or "").strip()
+                skip_idx = None
+                if current_text:
+                    for idx in range(len(history) - 1, -1, -1):
+                        m = history[idx]
+                        if m.sender == "customer" and (m.body or "").strip() == current_text:
+                            skip_idx = idx
+                            break
                 lines.append("Riwayat percakapan terakhir:")
-                for m in history:
+                for idx, m in enumerate(history):
+                    if idx == skip_idx:
+                        continue
                     body = (m.body or "").strip().replace(NL, " ")
                     lines.append("- [%s] %s" % (m.sender, body[:300]))
         return NL.join(lines)

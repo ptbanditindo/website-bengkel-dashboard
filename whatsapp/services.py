@@ -90,7 +90,7 @@ class ContactService:
         rows = list(self._s.scalars(
             select(models.WaMessage)
             .where(models.WaMessage.contact_id == contact_id)
-            .order_by(models.WaMessage.created_at.desc())
+            .order_by(models.WaMessage.created_at.desc(), models.WaMessage.id.desc())
             .limit(limit)
         ))
         rows.reverse()
