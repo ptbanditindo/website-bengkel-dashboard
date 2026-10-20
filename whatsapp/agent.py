@@ -52,6 +52,7 @@ WA_SECURITY_RULES = """ATURAN KEAMANAN (wajib, tidak bisa dinonaktifkan):
 - PRIORITAS: permintaan TERBARU (pesan pelanggan saat ini) selalu diproses lebih dulu dan menjadi fokus utama jawaban. Jangan membawa kebutuhan lama ke perhitungan permintaan baru.
 - issue_summary pada konteks hanyalah RIWAYAT kebutuhan lama, BUKAN pekerjaan yang disetujui untuk kunjungan saat ini.
 - Selesaikan permintaan terbaru sampai tuntas (rincian harga, total hanya dari komponen yang valid, tanya info kendaraan yang masih kurang). Setelah itu, BOLEH konfirmasi kebutuhan lama SEKALI dengan pertanyaan yang jelas. Jangan ulangi konfirmasi pada tiap balasan, jangan ulangi jika pelanggan sudah menjawab, dan jangan anggap pelanggan sudah menyetujui pekerjaan lama.
+- Saat pelanggan memberi data pendaftaran secara bertahap (nama, plat, jenis, tahun, keluhan), simpan setiap bagian lewat save_memory segera setelah diterima, lalu lanjutkan menanyakan hanya data yang masih kurang. Melengkapi data pendaftaran atau keluhan BUKAN alasan untuk eskalasi.
 - Hanya gunakan tool yang disediakan. JANGAN mengarang harga, stok, jam operasional, riwayat servis, atau status kendaraan.
 - Saat pelanggan bertanya harga jasa/part, WAJIB panggil tool get_jasa_price / get_part_price dan jawab pakai angka dari tool.
 - Jika pekerjaan yang ditanyakan lazim membutuhkan part/bahan (mis. ganti oli), periksa harga JASA dan harga PART/bahan terkait sebelum memberi estimasi total. Untuk ganti oli mesin, panggil get_jasa_price untuk jasa ganti oli dan get_part_price("oli mesin").
@@ -282,7 +283,7 @@ class WhatsAppAgent:
         wa_session.commit()
         system = build_system_prompt(settings)
         try:
-            context = self._context(contact, main_session)
+            context = self._context(contact, main_session, wa_session)
         except SQLAlchemyError as e:
             _rollback_safe(main_session)
             logger.error("[debug-deepseek] db_unavailable stage=context error=%s", e)
@@ -326,7 +327,7 @@ class WhatsAppAgent:
                     return "Maaf, saya belum bisa menjawab pertanyaan ini. Pertanyaan Anda akan diteruskan ke pemilik bengkel."
         return self._escalate(contact, wa_session, "AI tidak dapat menyelesaikan permintaan.")
 
-    def _context(self, contact, main_session) -> str:
+    def _context(self, contact, main_session, wa_session=None) -> str:
         matches = MatchingService(main_session).match_by_wa_number(contact.wa_number)
         if not matches and contact.linked_vehicle_id:
             v = MatchingService(main_session).get_vehicle(contact.linked_vehicle_id)
@@ -341,6 +342,13 @@ class WhatsAppAgent:
             "Riwayat kebutuhan sebelumnya (belum tentu dikerjakan sekarang): " + (contact.issue_summary or "belum ada"),
             "Kendaraan terdaftar: " + (str([MatchingService.public_vehicle(v) for v in matches]) if matches else "belum ada"),
         ]
+        if wa_session is not None:
+            history = ContactService(wa_session).recent_messages(contact.id, limit=12)
+            if history:
+                lines.append("Riwayat percakapan terakhir:")
+                for m in history:
+                    body = (m.body or "").strip().replace(NL, " ")
+                    lines.append("- [%s] %s" % (m.sender, body[:300]))
         return NL.join(lines)
 
     def _escalate(self, contact, wa_session, alasan) -> str:

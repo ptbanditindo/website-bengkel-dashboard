@@ -86,6 +86,16 @@ class ContactService:
         c.last_contact_at = _utcnow()
         return c
 
+    def recent_messages(self, contact_id: int, limit: int = 12):
+        rows = list(self._s.scalars(
+            select(models.WaMessage)
+            .where(models.WaMessage.contact_id == contact_id)
+            .order_by(models.WaMessage.created_at.desc())
+            .limit(limit)
+        ))
+        rows.reverse()
+        return rows
+
     def set_takeover(self, contact_id: int) -> models.WaContact:
         c = self.get(contact_id)
         c.owner_takeover_on = date.today()
