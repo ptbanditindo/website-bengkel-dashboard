@@ -28,6 +28,15 @@ NL = chr(10)
 # never escalate, and never write/delete anything on the main database.
 DB_UNAVAILABLE_REPLY = "Maaf, data kendaraan atau riwayat servis belum dapat diperiksa saat ini. Silakan coba lagi nanti."
 DB_UNAVAILABLE_TOOL = "GAGAL_MEMBACA_DATABASE: data tidak dapat dibaca saat ini (kesalahan sistem, bukan hasil pencarian kosong)."
+SAVE_FAILED_REPLY = "Maaf, data Anda belum dapat disimpan saat ini. Silakan coba lagi nanti."
+SAVE_FAILED_TOOL = "GAGAL_MENYIMPAN: data tidak dapat disimpan saat ini (kesalahan sistem)."
+DEFAULT_SHOP_NAME = "Dava Radiator"
+
+
+def _shop_name(settings) -> str:
+    """Shop name for greetings/persona: dashboard name if set, else a safe default."""
+    name = (getattr(settings, "nama_bengkel", None) or "").strip()
+    return name or DEFAULT_SHOP_NAME
 
 
 def _rollback_safe(session) -> None:
@@ -40,16 +49,26 @@ def _rollback_safe(session) -> None:
 
 WA_SECURITY_RULES = """ATURAN KEAMANAN (wajib, tidak bisa dinonaktifkan):
 - Kamu adalah customer service bengkel via WhatsApp.
+- PRIORITAS: permintaan TERBARU (pesan pelanggan saat ini) selalu diproses lebih dulu dan menjadi fokus utama jawaban. Jangan membawa kebutuhan lama ke perhitungan permintaan baru.
+- issue_summary pada konteks hanyalah RIWAYAT kebutuhan lama, BUKAN pekerjaan yang disetujui untuk kunjungan saat ini.
+- Selesaikan permintaan terbaru sampai tuntas (rincian harga, total hanya dari komponen yang valid, tanya info kendaraan yang masih kurang). Setelah itu, BOLEH konfirmasi kebutuhan lama SEKALI dengan pertanyaan yang jelas. Jangan ulangi konfirmasi pada tiap balasan, jangan ulangi jika pelanggan sudah menjawab, dan jangan anggap pelanggan sudah menyetujui pekerjaan lama.
 - Hanya gunakan tool yang disediakan. JANGAN mengarang harga, stok, jam operasional, riwayat servis, atau status kendaraan.
 - Saat pelanggan bertanya harga jasa/part, WAJIB panggil tool get_jasa_price / get_part_price dan jawab pakai angka dari tool.
-- JAWAB hanya berdasarkan hasil tool (data stok/harga asli). JANGAN mengarang padanan/alias barang (mis. menganggap "uppertank" = "tutup radiator").
-- Jika nama barang tidak ditemukan di stok (tool bilang "tidak terdaftar"), tampilkan saja daftar barang yang tersedia dari hasil tool; JANGAN memilih sembarang barang sebagai padanan.
+- Jika pekerjaan yang ditanyakan lazim membutuhkan part/bahan (mis. ganti oli), periksa harga JASA dan harga PART/bahan terkait sebelum memberi estimasi total. Untuk ganti oli mesin, panggil get_jasa_price untuk jasa ganti oli dan get_part_price("oli mesin").
+- Cek stok lewat check_stock jika pelanggan menanyakan ketersediaan atau jika jawaban membutuhkan info stok.
+- Jangan mengarang harga, stok, kuantitas, atau biaya tambahan. Ambil semua angka dari tool.
+- Jika harga jasa atau part tidak tersedia, nyatakan komponen mana yang belum diketahui. Jangan menyajikan total pasti seolah-olah lengkap.
+- Bedakan harga satuan dari total (total = satuan x jumlah yang diperlukan). Jangan mengasumsikan kapasitas/volume oli atau jumlah part jika belum dikonfirmasi pelanggan.
+- Untuk beberapa pekerjaan, jumlahkan hanya komponen yang relevan dengan pekerjaan yang disetujui pelanggan; permintaan lama yang belum disetujui tidak boleh ikut diestimasi.
+- JAWAB hanya berdasarkan hasil tool (data stok/harga asli). JANGAN mengarang padanan/alias barang. "Uppertank" BUKAN sinonim "Tutup Radiator", perlakukan sebagai part yang berbeda.
+- Jika nama part tidak ditemukan di stok (tool bilang tidak terdaftar/tidak diketahui), jelaskan bahwa data part tersebut belum tersedia lalu arahkan ke owner via tool escalate_to_owner. JANGAN menebak atau memilih barang lain sebagai padanan.
 - Jika pertanyaan harga ambigu/terlalu umum (mis. "service radiator"), tetap panggil tool lalu tampilkan daftar pilihan yang cocok beserta harganya; jangan langsung eskalasi.
-- Jika pertanyaan berisi beberapa hal dan sebagian tidak ada di data, JAWAB dulu bagian yang bisa dijawab (mis. harga jasa), lalu jelaskan item yang tidak tersedia dan minta info tambahan; JANGAN eskalasi seluruh pertanyaan hanya karena satu item tidak ditemukan.
+- Jika pertanyaan berisi beberapa hal dan sebagian tidak ada di data, JAWAB dulu bagian yang bisa dijawab (mis. harga jasa), lalu jelaskan item yang tidak tersedia dan minta info tambahan. JANGAN eskalasi seluruh pertanyaan hanya karena satu item tidak ditemukan.
 - JANGAN mengungkap jumlah stok, harga modal/beli, keuntungan/margin, laporan keuangan, atau data pelanggan lain.
 - Estimasi harga selalu perkiraan dan bukan harga final; arahkan pelanggan datang untuk pemeriksaan.
 - Rencana kedatangan hanyalah rencana, bukan bukti pelanggan benar-benar datang.
-- Gunakan tool escalate_to_owner HANYA jika pelanggan secara eksplisit minta bicara manusia, ATAU tidak ada satu pun bagian pertanyaan yang bisa dijawab dari tool. Jika ada bagian yang bisa dijawab (mis. harga jasa ketemu, part tidak), jawab bagian itu dan minta klarifikasi untuk sisanya — JANGAN eskalasi.
+- Saat pelanggan memutuskan pekerjaan untuk kunjungan ini (mis. "ganti oli saja" atau "ganti oli + servis radiator"), simpan keputusan itu melalui tool save_arrival_plan pada kolom catatan, dan anggap tersimpan hanya jika tool mengonfirmasi berhasil.
+- Gunakan tool escalate_to_owner HANYA jika: pelanggan eksplisit minta bicara manusia, ATAU tidak ada satu pun bagian pertanyaan yang bisa dijawab dari tool, ATAU identitas/harga part tidak terverifikasi.
 - Jika pelanggan tampak frustasi atau gagal identifikasi (nama/plat tidak cocok berulang kali), tawarkan/gunakan tool escalate_to_owner.
 - Jangan mengaku bisa mengubah data servis, stok, atau transaksi.
 """
@@ -57,7 +76,7 @@ WA_SECURITY_RULES = """ATURAN KEAMANAN (wajib, tidak bisa dinonaktifkan):
 
 def build_system_prompt(settings) -> str:
     lines = [
-        "Kamu adalah CS bengkel: " + (settings.nama_bengkel or "AI Bengkel") + ".",
+        "Kamu adalah CS bengkel: " + _shop_name(settings) + ".",
         "Alamat: " + (settings.alamat or "belum diatur") + ".",
         "Jam operasional: " + (settings.jam_operasional or "belum diatur") + ".",
         "Lokasi: " + (settings.maps_link or "belum diatur") + ".",
@@ -107,11 +126,11 @@ TOOL_SCHEMAS = [
         "tahun_mobil": _int_prop("Tahun mobil (opsional)"),
         "issue_summary": _str_prop("Keluhan/kebutuhan (opsional)"),
     }, []),
-    _schema("save_arrival_plan", "Catat rencana kedatangan pelanggan.", {
+    _schema("save_arrival_plan", "Catat rencana kedatangan pelanggan beserta pekerjaan yang dipilih untuk kunjungan ini.", {
         "rencana_hari": _str_prop("hari ini / besok / tanggal (opsional)"),
         "tanggal": _str_prop("YYYY-MM-DD (opsional)"),
         "waktu_perkiraan": _str_prop("Jam perkiraan (opsional)"),
-        "catatan": _str_prop("Catatan (opsional)"),
+        "catatan": _str_prop("Pekerjaan yang dipilih untuk kunjungan ini (mis. 'ganti oli saja' / 'ganti oli + servis radiator')"),
     }, []),
     _schema("escalate_to_owner", "Teruskan pertanyaan ke owner karena AI tidak bisa menjawab.", {"alasan": _str_prop("Alasan eskalasi")}, ["alasan"]),
 ]
@@ -216,20 +235,35 @@ def run_restricted_tool(name, args, contact, wa_session, main_session) -> str:
         return ("Harga jasa sekitar Rp%s (perkiraan, bisa berubah)." % ("{0:,.0f}".format(price).replace(",", "."))) if price is not None else "Harga jasa tidak diketahui."
     if name == "save_memory":
         fields = {k: v for k, v in args.items() if v is not None and k in ("nama", "plat", "jenis_mobil", "tahun_mobil", "issue_summary")}
-        ContactService(wa_session).update_memory(contact.id, **fields)
-        wa_session.commit()
+        try:
+            ContactService(wa_session).update_memory(contact.id, **fields)
+            wa_session.commit()
+        except SQLAlchemyError as e:
+            _rollback_safe(wa_session)
+            logger.error("[debug-deepseek] save_failed tool=save_memory error=%s", e)
+            return SAVE_FAILED_TOOL
         return "Memori tersimpan."
     if name == "save_arrival_plan":
-        ArrivalService(wa_session).create_plan(
-            contact.id,
-            rencana_hari=args.get("rencana_hari"),
-            tanggal=args.get("tanggal"),
-            waktu_perkiraan=args.get("waktu_perkiraan"),
-            catatan=args.get("catatan"),
-        )
+        try:
+            ArrivalService(wa_session).create_plan(
+                contact.id,
+                rencana_hari=args.get("rencana_hari"),
+                tanggal=args.get("tanggal"),
+                waktu_perkiraan=args.get("waktu_perkiraan"),
+                catatan=args.get("catatan"),
+            )
+        except SQLAlchemyError as e:
+            _rollback_safe(wa_session)
+            logger.error("[debug-deepseek] save_failed tool=save_arrival_plan error=%s", e)
+            return SAVE_FAILED_TOOL
         return "Rencana kedatangan tersimpan."
     if name == "escalate_to_owner":
-        QuestionService(wa_session).create(contact.id, contact.wa_number, contact.context_summary or "", alasan=args.get("alasan"))
+        try:
+            QuestionService(wa_session).create(contact.id, contact.wa_number, contact.context_summary or "", alasan=args.get("alasan"))
+        except SQLAlchemyError as e:
+            _rollback_safe(wa_session)
+            logger.error("[debug-deepseek] save_failed tool=escalate_to_owner error=%s", e)
+            return SAVE_FAILED_TOOL
         return "Pertanyaan diteruskan ke owner."
     return "Tool tidak dikenal."
 
@@ -239,13 +273,13 @@ class WhatsAppAgent:
         self._provider = build_chat_provider()
 
     async def reply(self, wa_number, text, wa_session, main_session) -> str:
+        settings = SettingsService(wa_session).get()
         if text.strip().lower() in {"halo", "hai", "hi", "pagi", "siang", "sore", "malam"}:
             logger.info("[debug-deepseek] greeting_fast_path text_length=%d", len(text))
-            return "Halo, ada yang bisa kami bantu?"
+            return "Halo saya dengan " + _shop_name(settings) + ", ada yang bisa kami bantu?"
         contact = ContactService(wa_session).get_or_create(wa_number)
         ContactService(wa_session).update_memory(contact.id, context_summary=(text[:400]))
         wa_session.commit()
-        settings = SettingsService(wa_session).get()
         system = build_system_prompt(settings)
         try:
             context = self._context(contact, main_session)
@@ -284,6 +318,9 @@ class WhatsAppAgent:
                 if result == DB_UNAVAILABLE_TOOL:
                     _rollback_safe(main_session)
                     return DB_UNAVAILABLE_REPLY
+                if result == SAVE_FAILED_TOOL:
+                    _rollback_safe(wa_session)
+                    return SAVE_FAILED_REPLY
                 messages.append({"role": "tool", "tool_call_id": tc["id"], "content": result})
                 if tc["function"]["name"] == "escalate_to_owner":
                     return "Maaf, saya belum bisa menjawab pertanyaan ini. Pertanyaan Anda akan diteruskan ke pemilik bengkel."
@@ -301,11 +338,16 @@ class WhatsAppAgent:
             "Plat: " + (contact.plat or "belum diketahui"),
             "Jenis: " + (contact.jenis_mobil or "belum diketahui"),
             "Tahun: " + (str(contact.tahun_mobil) if contact.tahun_mobil else "belum diketahui"),
-            "Keluhan: " + (contact.issue_summary or "belum ada"),
+            "Riwayat kebutuhan sebelumnya (belum tentu dikerjakan sekarang): " + (contact.issue_summary or "belum ada"),
             "Kendaraan terdaftar: " + (str([MatchingService.public_vehicle(v) for v in matches]) if matches else "belum ada"),
         ]
         return NL.join(lines)
 
     def _escalate(self, contact, wa_session, alasan) -> str:
-        QuestionService(wa_session).create(contact.id, contact.wa_number, contact.context_summary or "", alasan=alasan)
+        try:
+            QuestionService(wa_session).create(contact.id, contact.wa_number, contact.context_summary or "", alasan=alasan)
+        except SQLAlchemyError as e:
+            _rollback_safe(wa_session)
+            logger.error("[debug-deepseek] escalate_save_failed error=%s", e)
+            return SAVE_FAILED_REPLY
         return "Maaf, saya belum bisa menjawab pertanyaan ini. Pertanyaan Anda akan diteruskan ke pemilik bengkel."

@@ -20,6 +20,26 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash"
 
 
+def _pick_token(usage, name):
+    """Read a usage field defensively (OpenAI SDK object or plain dict)."""
+    if usage is None:
+        return None
+    if isinstance(usage, dict):
+        return usage.get(name)
+    return getattr(usage, name, None)
+
+
+def _usage_meta(provider_name, model, usage):
+    """Normalize provider usage metadata without fabricating token counts."""
+    return {
+        "provider": provider_name,
+        "model": model,
+        "prompt_tokens": _pick_token(usage, "prompt_tokens"),
+        "completion_tokens": _pick_token(usage, "completion_tokens"),
+        "total_tokens": _pick_token(usage, "total_tokens"),
+    }
+
+
 class DeepSeekProvider:
     """DeepSeek chat provider with OpenAI-compatible tool calling."""
 
@@ -77,7 +97,8 @@ class DeepSeekProvider:
                     "function": {"name": tc.function.name, "arguments": tc.function.arguments},
                 }
             )
-        return {"content": choice.content or "", "tool_calls": tool_calls}
+        usage = _usage_meta("deepseek", self._model, getattr(response, "usage", None))
+        return {"content": choice.content or "", "tool_calls": tool_calls, "usage": usage}
 
 
 class OpenRouterProvider:
@@ -139,7 +160,8 @@ class OpenRouterProvider:
                     "function": {"name": tc.function.name, "arguments": tc.function.arguments},
                 }
             )
-        return {"content": choice.content or "", "tool_calls": tool_calls}
+        usage = _usage_meta("openrouter", self._model, getattr(response, "usage", None))
+        return {"content": choice.content or "", "tool_calls": tool_calls, "usage": usage}
 
 
 def build_chat_provider():

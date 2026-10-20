@@ -15,9 +15,9 @@ from ai.providers import DeepSeekProvider, OpenRouterProvider, build_chat_provid
 from bot.ai.image_provider import OpenRouterImageProvider, build_vision_provider
 
 
-def _chat_response(content="halo", tool_calls=None):
+def _chat_response(content="halo", tool_calls=None, usage=None):
     msg = SimpleNamespace(content=content, tool_calls=tool_calls or [])
-    return SimpleNamespace(choices=[SimpleNamespace(message=msg)])
+    return SimpleNamespace(choices=[SimpleNamespace(message=msg)], usage=usage)
 
 
 def _tool_call(tc_id, name, arguments):
@@ -183,3 +183,82 @@ def test_vision_extract_api_error(monkeypatch):
 
     with pytest.raises(AIProviderError):
         asyncio.run(p.extract(b"\xff\xd8\xff", "image/jpeg", "baca"))
+
+
+
+def _usage_ns(prompt_tokens=None, completion_tokens=None, total_tokens=None):
+    return SimpleNamespace(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens, total_tokens=total_tokens)
+
+
+# ---------------------------------------------------------------------------
+# Usage metadata (WA-CS-FIX-PRICE-USAGE-01)
+# ---------------------------------------------------------------------------
+
+def test_deepseek_chat_forwards_usage(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-ds")
+    p = DeepSeekProvider()
+    create = _install_client(p)
+    create.return_value = _chat_response("ok", usage=_usage_ns(11, 22, 33))
+
+    out = asyncio.run(p.chat([{"role": "user", "content": "ping"}]))
+
+    assert out["content"] == "ok"
+    assert out["usage"]["provider"] == "deepseek"
+    assert out["usage"]["model"] == p.model
+    assert out["usage"]["prompt_tokens"] == 11
+    assert out["usage"]["completion_tokens"] == 22
+    assert out["usage"]["total_tokens"] == 33
+
+
+def test_openrouter_chat_forwards_usage(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or")
+    p = OpenRouterProvider(model="openai/gpt-4o-mini")
+    create = _install_client(p)
+    create.return_value = _chat_response("ok", usage=_usage_ns(5, 6, 11))
+
+    out = asyncio.run(p.chat([{"role": "user", "content": "ping"}]))
+
+    assert out["usage"]["provider"] == "openrouter"
+    assert out["usage"]["model"] == "openai/gpt-4o-mini"
+    assert out["usage"]["total_tokens"] == 11
+
+
+def test_usage_none_is_safe(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or")
+    p = OpenRouterProvider(model="openai/gpt-4o-mini")
+    create = _install_client(p)
+    create.return_value = _chat_response("ok", usage=None)
+
+    out = asyncio.run(p.chat([{"role": "user", "content": "ping"}]))
+
+    assert out["usage"]["provider"] == "openrouter"
+    assert out["usage"]["prompt_tokens"] is None
+    assert out["usage"]["completion_tokens"] is None
+    assert out["usage"]["total_tokens"] is None
+
+
+def test_usage_missing_fields_safe(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or")
+    p = OpenRouterProvider(model="openai/gpt-4o-mini")
+    create = _install_client(p)
+    create.return_value = _chat_response("ok", usage=SimpleNamespace(prompt_tokens=7))
+
+    out = asyncio.run(p.chat([{"role": "user", "content": "ping"}]))
+
+    assert out["usage"]["prompt_tokens"] == 7
+    assert out["usage"]["completion_tokens"] is None
+    assert out["usage"]["total_tokens"] is None
+
+
+def test_tool_call_response_keeps_usage(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or")
+    p = OpenRouterProvider(model="openai/gpt-4o-mini")
+    create = _install_client(p)
+    create.return_value = _chat_response(
+        None, tool_calls=[_tool_call("t1", "lookup", '{"x": 1}')], usage=_usage_ns(3, 4, 7)
+    )
+
+    out = asyncio.run(p.chat([{"role": "user", "content": "x"}], tools=[{"type": "function"}]))
+
+    assert out["tool_calls"][0]["function"]["name"] == "lookup"
+    assert out["usage"]["total_tokens"] == 7
